@@ -376,6 +376,7 @@ func (e *EngineV1) Execute(ctx context.Context, pool *pgxpool.Pool, run data.Run
 		Runtime:                 &runtimeSnapshot,
 		HookRuntime:             e.hookRuntime,
 		HookRegistry:            e.hookRegistry,
+		PluginHookRunner:        pipeline.NewDefaultPluginHookRunner(),
 		UserID:                  run.CreatedByUserID,
 		JobPayload:              cloneMap(input.JobPayload),
 		ProfileRef:              derefString(run.ProfileRef),
@@ -853,6 +854,7 @@ func buildAgentConfigLayer(
 			baseAllowlistSet,
 			deps.ToolRegistry,
 		),
+		pipeline.NewPluginHooksMiddleware(deps.DBPool),
 		pipeline.NewToolProviderMiddleware(deps.ToolProviderCache),
 		pipeline.NewPersonaResolutionMiddleware(deps.PersonaRegistryGetter, deps.DBPool, runsRepo, eventsRepo, releaseSlot),
 	}
@@ -912,6 +914,7 @@ func buildCapabilityLayer(
 				"/home/arkloop",
 			),
 		),
+		pipeline.NewPluginContextMiddleware(deps.DBPool),
 		traceMemoryInjectionMiddleware(func(ctx context.Context, rc *pipeline.RunContext, next pipeline.RunHandler) error {
 			return promptHookMW(ctx, rc, func(ctx context.Context, rc *pipeline.RunContext) error {
 				return memoryMW(ctx, rc, next)

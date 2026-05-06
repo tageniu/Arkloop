@@ -224,6 +224,19 @@ func (l *Loop) Run(
 		prepareHeartbeatDecisionPhaseRequest(&turnRequest)
 		debugEnabled := runCtx.PipelineRC != nil && runCtx.PipelineRC.PromptCacheDebugEnabled
 
+		if runCtx.PipelineRC != nil && runCtx.PipelineRC.PluginHookRunner != nil {
+			stageStart = time.Now()
+			var pluginErr error
+			turnRequest, pluginErr = pipeline.RunPluginBeforeModelCall(ctx, runCtx.PipelineRC, turnRequest)
+			traceAgentLoopStage(runCtx, "plugin_before_model_call_hooks", stageStart, nil)
+			if pluginErr != nil {
+				errorClass := "plugin.before_model_denied"
+				return yield(emitter.Emit("run.failed", map[string]any{
+					"error_class": errorClass,
+					"message":     pluginErr.Error(),
+				}, nil, stringPtr(errorClass)))
+			}
+		}
 		if promptCacheState != nil {
 			stageStart = time.Now()
 			prepareTurnRequestPromptCache(&turnRequest, runCtx, promptCacheState)
@@ -293,6 +306,18 @@ func (l *Loop) Run(
 		}
 		if runCtx.PipelineRC != nil && runCtx.PipelineRC.HookRuntime != nil && runCtx.PipelineRC.HookRegistry != nil {
 			runCtx.PipelineRC.HookRuntime.AfterModelResponse(ctx, runCtx.PipelineRC, pipeline.ModelResponse{
+				Model:         turnRequest.Model,
+				AssistantText: strings.TrimSpace(turn.AssistantText),
+				ToolCalls:     append([]llm.ToolCall(nil), turn.ToolCalls...),
+				ToolResults:   append([]llm.StreamToolResult(nil), turn.ToolResults...),
+				Completed:     copyMap(turn.CompletedDataJSON),
+				Terminal:      turn.Terminal,
+				Cancelled:     turn.Cancelled,
+			})
+		}
+		if runCtx.PipelineRC != nil && runCtx.PipelineRC.PluginHookRunner != nil {
+			pipeline.RunPluginAfterModelResponse(ctx, runCtx.PipelineRC, pipeline.ModelResponse{
+				Model:         turnRequest.Model,
 				AssistantText: strings.TrimSpace(turn.AssistantText),
 				ToolCalls:     append([]llm.ToolCall(nil), turn.ToolCalls...),
 				ToolResults:   append([]llm.StreamToolResult(nil), turn.ToolResults...),
@@ -954,6 +979,14 @@ func (l *Loop) executeToolCall(
 		inputJSON, _ := json.Marshal(call.ArgumentsJSON)
 		appendRollout(ctx, runCtx.RolloutRecorder, MakeToolCall(call.ToolCallID, call.ToolName, inputJSON))
 	}
+	if runCtx.PipelineRC != nil && runCtx.PipelineRC.PluginHookRunner != nil {
+		before := pipeline.RunPluginBeforeToolUse(ctx, runCtx.PipelineRC, call)
+		call = before.Call
+		if before.Result != nil {
+			pipeline.RunPluginAfterToolUse(ctx, runCtx.PipelineRC, call, *before.Result)
+			return *before.Result
+		}
+	}
 
 	streamEvent := func(ev events.RunEvent) error {
 		return yield(ev)
@@ -995,6 +1028,9 @@ func (l *Loop) executeToolCall(
 		StreamEvent:                      streamEvent,
 	}
 	result := runCtx.ToolExecutor.Execute(ctx, call.ToolName, copyMap(call.ArgumentsJSON), execCtx, call.ToolCallID)
+	if runCtx.PipelineRC != nil && runCtx.PipelineRC.PluginHookRunner != nil {
+		pipeline.RunPluginAfterToolUse(ctx, runCtx.PipelineRC, call, result)
+	}
 	return result
 }
 

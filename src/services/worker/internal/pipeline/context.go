@@ -75,6 +75,9 @@ type RunContext struct {
 	Runtime             *sharedtoolruntime.RuntimeSnapshot
 	HookRuntime         *HookRuntime
 	HookRegistry        *HookRegistry
+	PluginHooks         []PluginHookConfig
+	PluginHookRunner    PluginHookRunner
+	PluginContext       []PromptSegment
 
 	// -- EngineV1.Execute 从 Run.CreatedByUserID 注入；nil 时 MemoryMiddleware 跳过写入 --
 	// agent_id 约定：默认取 PersonaDefinition.ID，字符集 [a-zA-Z0-9_-]，adapter 层 sanitize

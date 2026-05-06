@@ -647,6 +647,7 @@ func (e *DesktopEngine) Execute(ctx context.Context, run data.Run, traceID strin
 		Runtime:             &runRuntime,
 		HookRuntime:         e.hookRuntime,
 		HookRegistry:        e.hookRegistry,
+		PluginHookRunner:    pipeline.NewDefaultPluginHookRunner(),
 
 		ExecutorBuilder:     e.executorRegistry,
 		ToolBudget:          map[string]any{},
@@ -752,6 +753,7 @@ func (e *DesktopEngine) Execute(ctx context.Context, run data.Run, traceID strin
 			e.baseAllowlist,
 			e.toolRegistry,
 		),
+		desktopObservedStage("plugin_hooks", eventsRepo, pipeline.NewPluginHooksMiddleware(e.db)),
 		desktopObservedStage("tool_provider_bindings", eventsRepo, desktopToolProviderBindings(e.db)),
 		desktopObservedStage("spawn_agent", eventsRepo, pipeline.NewSpawnAgentMiddleware()),
 		desktopObservedStage("persona_resolution", eventsRepo, desktopPersonaResolution(e.db, e.personaRegistry, runsRepo, eventsRepo)),
@@ -786,6 +788,7 @@ func (e *DesktopEngine) Execute(ctx context.Context, run data.Run, traceID strin
 				return filepath.Join(home, ".arkloop", "home")
 			}),
 		)),
+		desktopObservedStage("plugin_context", eventsRepo, pipeline.NewPluginContextMiddleware(e.db)),
 	}
 	middlewares = append(middlewares, desktopCapabilityMiddlewares(memMiddleware, e.promptInjection, eventsRepo)...)
 	if e.lspManager != nil {
@@ -3325,9 +3328,11 @@ func desktopAgentLoop(
 		defer stopCancelWatch()
 		defer cleanupDesktopRunTools(rc, w)
 
+		pipeline.RunPluginSessionStart(execCtx, rc)
 		execErr := exec.Execute(execCtx, rc, rc.Emitter, func(ev events.RunEvent) error {
 			return w.append(execCtx, rc.Run.ID, ev, "")
 		})
+		pipeline.RunPluginSessionEnd(context.WithoutCancel(ctx), rc, execErr)
 		if errors.Is(execErr, context.Canceled) {
 			stopped, stopErr := w.finalizeCancelledIfRequested(ctx)
 			if stopErr != nil {

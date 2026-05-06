@@ -187,7 +187,8 @@ func ParseServerConfig(serverID string, payload map[string]any, defaultTimeoutMs
 			return ServerConfig{}, fmt.Errorf("mcp server %q missing command", cleanedID)
 		}
 		server.Args = toStringSlice(payload["args"])
-		server.Cwd = optionalStringPtr(payload["cwd"])
+		server.Cwd = optionalStringPtr(firstNonNil(payload["cwd"], payload["working_dir"], payload["workingDir"]))
+		server.InheritParentEnv = asBool(firstNonNil(payload["inherit_parent_env"], payload["inheritParentEnv"]))
 		if rawEnv, ok := payload["env"].(map[string]any); ok {
 			for key, value := range rawEnv {
 				key = strings.TrimSpace(key)
@@ -341,6 +342,9 @@ func CheckHostRequirement(server ServerConfig, requirement string) error {
 			return fmt.Errorf("stdio command missing")
 		}
 	case "desktop_local", "desktop_sidecar":
+		if !desktopHostRequirementsAvailable {
+			return fmt.Errorf("%s host is only available in desktop mode", requirement)
+		}
 		return nil
 	}
 	return nil
@@ -367,6 +371,26 @@ func optionalStringPtr(value any) *string {
 		return nil
 	}
 	return &text
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
+func asBool(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		return strings.EqualFold(strings.TrimSpace(typed), "true")
+	default:
+		return false
+	}
 }
 
 func asString(value any) string {

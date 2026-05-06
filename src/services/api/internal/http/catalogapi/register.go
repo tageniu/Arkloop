@@ -10,6 +10,7 @@ import (
 	"arkloop/services/api/internal/data"
 	"arkloop/services/api/internal/llmproviders"
 	repopersonas "arkloop/services/api/internal/personas"
+	"arkloop/services/api/internal/plugincontrib"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,11 @@ type Deps struct {
 	SkillPackagesRepo            *data.SkillPackagesRepository
 	ProfileSkillInstallsRepo     *data.ProfileSkillInstallsRepository
 	WorkspaceSkillEnableRepo     *data.WorkspaceSkillEnablementsRepository
+	PluginPackagesRepo           *data.PluginPackagesRepository
+	PluginEnablementsRepo        *data.PluginEnablementsRepository
+	PluginRuntimeStateRepo       *data.PluginRuntimeStateRepository
+	PluginInstaller              *plugincontrib.Installer
+	PluginEnabler                *plugincontrib.Enabler
 	ProfileRegistriesRepo        *data.ProfileRegistriesRepository
 	WorkspaceRegistriesRepo      *data.WorkspaceRegistriesRepository
 	PlatformSettingsRepo         *data.PlatformSettingsRepository
@@ -78,6 +84,8 @@ func RegisterRoutes(mux *nethttp.ServeMux, deps Deps) {
 	mux.HandleFunc("/v1/tool-providers/", toolProviderEntry(deps.AuthService, deps.AccountMembershipRepo, deps.ToolProviderConfigsRepo, deps.SecretsRepo, deps.Pool, deps.DirectPool, deps.ProjectRepo))
 	mux.HandleFunc("/v1/skill-packages", skillPackagesEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.SkillPackagesRepo, deps.SkillStore))
 	mux.HandleFunc("/v1/skill-packages/", skillPackageEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.SkillPackagesRepo))
+	mux.HandleFunc("/v1/plugins", pluginsEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.PluginPackagesRepo, deps.PluginInstaller, deps.Pool))
+	mux.HandleFunc("/v1/plugins/", pluginEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.PluginPackagesRepo, deps.PluginRuntimeStateRepo, deps.PluginInstaller, deps.PluginEnabler, deps.Pool))
 	mux.HandleFunc("/v1/skill-packages/import/github", githubSkillImportEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.SkillPackagesRepo, deps.SkillStore))
 	mux.HandleFunc("/v1/skill-packages/import/upload", uploadSkillImportEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.SkillPackagesRepo, deps.SkillStore))
 	mux.HandleFunc("/v1/market/skills", marketSkillsEntry(deps.AuthService, deps.AccountMembershipRepo, deps.APIKeysRepo, deps.AuditWriter, deps.PlatformSettingsRepo, deps.ProfileSkillInstallsRepo, deps.ProfileRegistriesRepo, deps.WorkspaceSkillEnableRepo))

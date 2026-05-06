@@ -1,0 +1,43 @@
+schemaVersion: 1
+id: arkloop.plugins.cua
+name: CUA Computer Use
+version: 0.1.0
+publisher: arkloop
+description: Drive local macOS apps through CUA Driver.
+host_requirement: desktop_local
+platforms: [darwin]
+
+runtime:
+  id: cua-driver
+  detect:
+    - "${PLUGIN_DATA}/runtime/cua-driver"
+    - "/Applications/CuaDriver.app/Contents/MacOS/cua-driver"
+  version_command: ["--version"]
+  version_min: "0.0.15"
+  binary:
+    - platform: darwin-arm64
+      path: cua-driver
+      url: https://github.com/trycua/cua/releases/download/cua-driver-v0.0.15/cua-driver-0.0.15-darwin-arm64.tar.gz
+      sha256: 5b42a4a44df06efe9eb2d4bb2f506468883213551a2b3d09bb15bac8c47b4b15
+
+mcp_servers:
+  - install_key: cua-driver
+    transport: stdio
+    command: "${runtime.cua-driver.path}"
+    args: [mcp]
+    env:
+      CUA_LOG_LEVEL: "${settings.log_level}"
+
+skills:
+  - skill_key: cua-driver
+    bundle: skills/cua-driver/SKILL.md
+    version: "0.1.0"
+
+context: context.md
+
+settings:
+  - key: log_level
+    type: select
+    label: Log level
+    options: [info, debug]
+    default: info
