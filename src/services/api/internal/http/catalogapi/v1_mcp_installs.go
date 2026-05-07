@@ -1076,8 +1076,11 @@ func loadMCPAuthPayload(ctx context.Context, repo *data.SecretsRepository, secre
 }
 
 func notifyMCPChanged(ctx context.Context, pool data.DB, accountID uuid.UUID) {
-	if pool == nil || accountID == uuid.Nil {
+	if accountID == uuid.Nil {
 		return
 	}
-	_, _ = pool.Exec(ctx, "SELECT pg_notify('mcp_config_changed', $1)", accountID.String())
+	if pool != nil {
+		_, _ = pool.Exec(ctx, "SELECT pg_notify('mcp_config_changed', $1)", accountID.String())
+	}
+	notifyMCPChangedLocal(ctx, accountID)
 }

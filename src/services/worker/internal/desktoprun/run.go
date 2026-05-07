@@ -88,6 +88,7 @@ func RunDesktop(ctx context.Context) error {
 	}
 	desktop.SetLLMProviderModelTester(engine)
 	defer engine.Shutdown(context.Background())
+	engine.StartMCPDiscoveryPrewarm(ctx)
 
 	lifecycle := newLifecycleManager(db, cq, bus, logger)
 	if err := lifecycle.Bootstrap(ctx); err != nil {

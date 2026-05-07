@@ -239,6 +239,9 @@ CREATE INDEX ix_org_memberships_user_id ON "account_memberships"(user_id);
 
 CREATE INDEX ix_run_events_run_seq ON run_events(run_id, seq);
 
+CREATE INDEX ix_run_events_run_type_ts_seq
+    ON run_events(run_id, type, ts DESC, seq DESC);
+
 CREATE INDEX ix_run_events_type ON run_events(type);
 
 CREATE INDEX ix_runs_org_id ON runs(account_id);
@@ -351,6 +354,7 @@ CREATE TABLE account_entitlement_overrides (
     created_at         TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (account_id, key)
 );
+
 CREATE TABLE "account_memberships" (
     id         TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))),
     account_id     TEXT NOT NULL REFERENCES "accounts"(id) ON DELETE CASCADE,

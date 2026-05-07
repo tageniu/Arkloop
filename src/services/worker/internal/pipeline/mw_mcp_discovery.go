@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const defaultMCPDiscoverySlowEventMs = 3000
+const defaultMCPDiscoverySlowEventMs = 100
 
 // NewMCPDiscoveryMiddleware 按 account 从 DB 加载 MCP 工具（带缓存），合并到 RunContext 的工具集。
 func NewMCPDiscoveryMiddleware(

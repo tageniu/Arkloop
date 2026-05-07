@@ -247,6 +247,50 @@ func TestComposeDesktopEngineRegistersArkloopHelp(t *testing.T) {
 	}
 }
 
+func TestDesktopMCPDiscoveryPrewarmTargets(t *testing.T) {
+	ctx := context.Background()
+	db := openDesktopPromptInjectionTestDB(t)
+	accountID := uuid.New()
+	otherAccountID := uuid.New()
+
+	mustExecDesktopSQL(t, db,
+		`CREATE TABLE profile_mcp_installs (
+			id TEXT PRIMARY KEY,
+			account_id TEXT NOT NULL,
+			profile_ref TEXT NOT NULL
+		)`,
+		`CREATE TABLE workspace_mcp_enablements (
+			workspace_ref TEXT NOT NULL,
+			account_id TEXT NOT NULL,
+			install_id TEXT NOT NULL,
+			enabled INTEGER NOT NULL
+		)`,
+	)
+	if _, err := db.Exec(ctx, `INSERT INTO profile_mcp_installs (id, account_id, profile_ref) VALUES ($1, $2, $3)`, "install-1", accountID.String(), "pref-a"); err != nil {
+		t.Fatalf("insert install: %v", err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO workspace_mcp_enablements (workspace_ref, account_id, install_id, enabled) VALUES ($1, $2, $3, $4)`, "ws-a", accountID.String(), "install-1", true); err != nil {
+		t.Fatalf("insert enablement: %v", err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO profile_mcp_installs (id, account_id, profile_ref) VALUES ($1, $2, $3)`, "install-2", otherAccountID.String(), "pref-b"); err != nil {
+		t.Fatalf("insert other install: %v", err)
+	}
+	if _, err := db.Exec(ctx, `INSERT INTO workspace_mcp_enablements (workspace_ref, account_id, install_id, enabled) VALUES ($1, $2, $3, $4)`, "ws-b", otherAccountID.String(), "install-2", true); err != nil {
+		t.Fatalf("insert other enablement: %v", err)
+	}
+
+	targets, err := listDesktopMCPDiscoveryPrewarmTargets(ctx, db, accountID)
+	if err != nil {
+		t.Fatalf("list targets: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("unexpected target count: %d", len(targets))
+	}
+	if targets[0].AccountID != accountID || targets[0].ProfileRef != "pref-a" || targets[0].WorkspaceRef != "ws-a" {
+		t.Fatalf("unexpected target: %#v", targets[0])
+	}
+}
+
 func TestDesktopPromptInjectionResolverReadsPlatformSettings(t *testing.T) {
 	ctx := context.Background()
 	db := openDesktopPromptInjectionTestDB(t)
@@ -976,7 +1020,13 @@ func TestDesktopRoutingResolveGatewayForAgentNameUsesSelector(t *testing.T) {
 		},
 	})
 
-	mw := desktopRouting(router, nil, false, db, data.DesktopRunsRepository{}, data.DesktopRunEventsRepository{})
+	routingLoader := routing.NewDesktopSQLiteRoutingLoader(
+		func(ctx context.Context) (routing.ProviderRoutingConfig, error) {
+			return router.Config(), nil
+		},
+		router.Config(),
+	)
+	mw := desktopRouting(router, nil, false, db, routingLoader, data.DesktopRunsRepository{}, data.DesktopRunEventsRepository{})
 	rc := &pipeline.RunContext{
 		Run:       dataRunForDesktopTest(),
 		Emitter:   events.NewEmitter("test"),

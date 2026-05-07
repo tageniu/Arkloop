@@ -457,7 +457,11 @@ func ComposeDesktopEngine(ctx context.Context, db data.DesktopDB, bus eventbus.E
 	personaGetter := loadPersonaRegistryFromFS()
 
 	mcpPool := mcp.NewPool()
-	mcpDiscoveryCache := mcp.NewDiscoveryCache(30*time.Second, mcpPool)
+	mcpCacheTTL, err := loadDesktopMCPCacheTTL()
+	if err != nil {
+		return nil, err
+	}
+	mcpDiscoveryCache := mcp.NewDiscoveryCache(mcpCacheTTL, mcpPool)
 
 	if err := cleanupOrphanSkillRuntimes(ctx, db); err != nil {
 		slog.WarnContext(ctx, "desktop: orphan skill runtime cleanup failed", "err", err.Error())
@@ -561,6 +565,21 @@ func loadPersonaRegistryFromFS() func() *personas.Registry {
 		cachedAt = time.Now()
 		return cached
 	}
+}
+
+func loadDesktopMCPCacheTTL() (time.Duration, error) {
+	ttlSeconds := DefaultConfig().MCPCacheTTLSeconds
+	if raw, ok := lookupEnv(mcpCacheTTLSecondsEnv); ok {
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			return 0, fmt.Errorf("%s: must be an integer", mcpCacheTTLSecondsEnv)
+		}
+		if value < 0 {
+			return 0, fmt.Errorf("%s: must be >= 0", mcpCacheTTLSecondsEnv)
+		}
+		ttlSeconds = value
+	}
+	return time.Duration(ttlSeconds) * time.Second, nil
 }
 
 // Shutdown releases resources held by the engine (LSP servers, etc.).
@@ -774,7 +793,7 @@ func (e *DesktopEngine) Execute(ctx context.Context, run data.Run, traceID strin
 		middlewares = append(middlewares, lsp.NewDiagnosticMiddleware(e.lspManager))
 	}
 	middlewares = append(middlewares,
-		desktopRouting(e.auxRouter, e.auxGateway, e.emitDebugEvents, e.db, runsRepo, eventsRepo),
+		desktopRouting(e.auxRouter, e.auxGateway, e.emitDebugEvents, e.db, e.routingLoader, runsRepo, eventsRepo),
 		pipeline.NewModelIdentityMiddleware(),
 		desktopObservedStage("channel_group_context_trim", eventsRepo, pipeline.NewChannelGroupContextTrimMiddleware(pipeline.GroupContextTrimDeps{
 			Pool:            e.db,
@@ -3072,12 +3091,13 @@ func desktopRouting(
 	auxGateway llm.Gateway,
 	emitDebugEvents bool,
 	db data.DesktopDB,
+	routingLoader *routing.ConfigLoader,
 	runsRepo data.DesktopRunsRepository,
 	eventsRepo data.DesktopRunEventsRepository,
 ) pipeline.RunMiddleware {
 	return func(ctx context.Context, rc *pipeline.RunContext, next pipeline.RunHandler) error {
 		router := fallbackRouter
-		if dbCfg, err := loadDesktopRoutingConfig(ctx, db); err == nil {
+		if dbCfg, err := routingLoader.Load(ctx, &rc.Run.AccountID); err == nil && len(dbCfg.Routes) > 0 {
 			router = routing.NewProviderRouter(dbCfg)
 		}
 		cfg := router.Config()

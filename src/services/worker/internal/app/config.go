@@ -66,7 +66,7 @@ func DefaultConfig() Config {
 		QueueJobTypes:               []string{queue.RunExecuteJobType, queue.WebhookDeliverJobType, queue.EmailSendJobType, queue.ContextCompactMaintainJobType},
 		Capabilities:                []string{queue.RunExecuteJobType, queue.WebhookDeliverJobType, queue.EmailSendJobType, queue.ContextCompactMaintainJobType},
 		Version:                     "unknown",
-		MCPCacheTTLSeconds:          60,
+		MCPCacheTTLSeconds:          600,
 		ToolProviderCacheTTLSeconds: 60,
 		QueueDriver:                 "pg",
 		MinConcurrency:              2,
