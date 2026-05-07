@@ -2,14 +2,13 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import type { CodeExecution } from '../components/CodeExecutionCard'
 import type { ArtifactRef, SubAgentRef } from '../storage'
-import { useRightPanelActions } from './app-ui'
+import type { ResourceRef } from '../components/resource-preview/types'
 
 export type DocumentPanelState = {
   artifact: ArtifactRef
@@ -22,6 +21,7 @@ type ActivePanel =
   | { type: 'code'; execution: CodeExecution }
   | { type: 'document'; artifact: DocumentPanelState }
   | { type: 'agent'; agent: SubAgentRef }
+  | { type: 'resource'; resource: ResourceRef }
   | null
 
 type ShareModalState = {
@@ -37,6 +37,7 @@ type PanelContextValue = {
   openCodePanel: (execution: CodeExecution) => void
   openDocumentPanel: (state: DocumentPanelState) => void
   openAgentPanel: (agent: SubAgentRef) => void
+  openResourcePanel: (resource: ResourceRef) => void
   closePanel: () => void
   openShareModal: (messageId?: string) => void
   closeShareModal: () => void
@@ -59,14 +60,8 @@ const defaultShareModal: ShareModalState = {
 }
 
 export function PanelProvider({ children }: { children: ReactNode }) {
-  const { setRightPanelOpen } = useRightPanelActions()
-
   const [activePanel, setActivePanel] = useState<ActivePanel>(null)
   const [shareModal, setShareModal] = useState<ShareModalState>(defaultShareModal)
-
-  useEffect(() => {
-    setRightPanelOpen(activePanel != null)
-  }, [activePanel, setRightPanelOpen])
 
   const openSourcePanel = useCallback((messageId: string) => {
     setActivePanel({ type: 'source', messageId })
@@ -82,6 +77,10 @@ export function PanelProvider({ children }: { children: ReactNode }) {
 
   const openAgentPanel = useCallback((agent: SubAgentRef) => {
     setActivePanel({ type: 'agent', agent })
+  }, [])
+
+  const openResourcePanel = useCallback((resource: ResourceRef) => {
+    setActivePanel({ type: 'resource', resource })
   }, [])
 
   const closePanel = useCallback(() => {
@@ -119,6 +118,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
       openCodePanel,
       openDocumentPanel,
       openAgentPanel,
+      openResourcePanel,
       closePanel,
       openShareModal,
       closeShareModal,
@@ -131,6 +131,7 @@ export function PanelProvider({ children }: { children: ReactNode }) {
       openCodePanel,
       openDocumentPanel,
       openAgentPanel,
+      openResourcePanel,
       closePanel,
       openShareModal,
       closeShareModal,

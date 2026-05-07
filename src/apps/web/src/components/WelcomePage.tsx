@@ -5,6 +5,7 @@ import type { LocaleStrings } from '../locales'
 import { ChatInput, type Attachment, type ChatInputHandle } from './ChatInput'
 import { ErrorCallout, type AppError } from './ErrorCallout'
 import { NotificationBell } from './NotificationBell'
+import { RightPanel } from './RightPanel'
 import { isDesktop } from '@arkloop/shared/desktop'
 import { DebugTrigger, useTimeZone } from '@arkloop/shared'
 import { buildDraftAttachmentRecords, restoreAttachmentFromDraftRecord } from '../draftAttachments'
@@ -30,11 +31,15 @@ import { useThreadList } from '../contexts/thread-list'
 import {
   useAppModeUI,
   useNotificationsUI,
+  useRightPanelActions,
   useSearchUI,
   useSettingsUI,
   useSkillPromptUI,
+  useTitleBarRightPanelUI,
 } from '../contexts/app-ui'
 import { useCredits } from '../contexts/credits'
+
+const welcomeRightPanelWidth = 520
 
 function normalizeError(error: unknown, fallback: string): AppError {
   if (isApiError(error)) {
@@ -155,9 +160,12 @@ export function WelcomePage() {
   const { openNotifications: onOpenNotifications, notificationVersion } = useNotificationsUI()
   const { openSettings: onOpenSettings } = useSettingsUI()
   const { appMode } = useAppModeUI()
+  const { setRightPanelOpen } = useRightPanelActions()
+  const { setTitleBarRightPanelClick } = useTitleBarRightPanelUI()
   const { pendingSkillPrompt, consumeSkillPrompt } = useSkillPromptUI()
   const { refreshCredits } = useCredits()
   const [showDebugPanel, setShowDebugPanel] = useState(() => readDeveloperShowDebugPanel())
+  const [rightPanelVisible, setRightPanelVisible] = useState(false)
   const chatInputRef = useRef<ChatInputHandle>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [initialPlanMode, setInitialPlanMode] = useState(false)
@@ -169,6 +177,17 @@ export function WelcomePage() {
   const [error, setError] = useState<AppError | null>(null)
   const navigate = useNavigate()
   const { t } = useLocale()
+
+  useEffect(() => {
+    setRightPanelOpen(rightPanelVisible)
+  }, [rightPanelVisible, setRightPanelOpen])
+
+  useEffect(() => {
+    setTitleBarRightPanelClick(() => {
+      setRightPanelVisible((visible) => !visible)
+    })
+    return () => setTitleBarRightPanelClick(null)
+  }, [setTitleBarRightPanelClick])
 
   const greeting = useMemo(
     () => buildGreeting(t.welcomeGreeting, me?.username ?? null, getGreetingParts(new Date(), timeZone)),
@@ -418,36 +437,37 @@ export function WelcomePage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* 顶部 header */}
-      <div className="relative z-10 flex min-h-[51px] items-center justify-end gap-2 px-[15px] py-[15px]">
-        {!isDesktop() && (
-          <NotificationBell accessToken={accessToken} onClick={onOpenNotifications} refreshKey={notificationVersion} title={t.notificationsTitle} />
-        )}
-        {!isDesktop() && (
-          <button
-            onClick={onTogglePrivateMode}
-            title={isPrivateMode ? t.disableIncognito : t.enableIncognito}
-            className={[
-              'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
-              isPrivateMode
-                ? 'bg-[var(--c-bg-deep)] text-[var(--c-text-primary)]'
-                : 'text-[var(--c-text-secondary)] hover:bg-[var(--c-bg-deep)] hover:text-[var(--c-text-primary)]',
-            ].join(' ')}
-          >
-            <Glasses size={18} />
-          </button>
-        )}
-      </div>
+    <div className="flex h-full min-w-0 overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* 顶部 header */}
+        <div className="relative z-10 flex min-h-[51px] items-center justify-end gap-2 px-[15px] py-[15px]">
+          {!isDesktop() && (
+            <NotificationBell accessToken={accessToken} onClick={onOpenNotifications} refreshKey={notificationVersion} title={t.notificationsTitle} />
+          )}
+          {!isDesktop() && (
+            <button
+              onClick={onTogglePrivateMode}
+              title={isPrivateMode ? t.disableIncognito : t.enableIncognito}
+              className={[
+                'flex h-8 w-8 items-center justify-center rounded-lg transition-colors',
+                isPrivateMode
+                  ? 'bg-[var(--c-bg-deep)] text-[var(--c-text-primary)]'
+                  : 'text-[var(--c-text-secondary)] hover:bg-[var(--c-bg-deep)] hover:text-[var(--c-text-primary)]',
+              ].join(' ')}
+            >
+              <Glasses size={18} />
+            </button>
+          )}
+        </div>
 
-      {/* 居中内容 — paddingTop 带过渡动画，模式切换时平滑移动 */}
-      <div
-        className="flex flex-1 flex-col items-center px-5"
-        style={{
-          paddingTop: appMode === 'work' ? '32vh' : '27vh',
-          transition: 'padding-top 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}
-      >
+        {/* 居中内容 — paddingTop 带过渡动画，模式切换时平滑移动 */}
+        <div
+          className="flex flex-1 flex-col items-center px-5"
+          style={{
+            paddingTop: appMode === 'work' ? '32vh' : '27vh',
+            transition: 'padding-top 0.38s cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
+        >
         {/* 标题：三层绝对定位交叉淡出 */}
         <div className="mb-[40px]" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {/* 常规问候 / 无痕文本 */}
@@ -541,8 +561,20 @@ export function WelcomePage() {
           </div>
           {error && <ErrorCallout error={error} />}
         </div>
+        </div>
+        {showDebugPanel && <DebugTrigger />}
       </div>
-      {showDebugPanel && <DebugTrigger />}
+      <div
+        className="shrink-0 overflow-hidden bg-[var(--c-bg-page)] transition-[width,opacity] duration-200"
+        style={{
+          width: rightPanelVisible ? welcomeRightPanelWidth : 0,
+          opacity: rightPanelVisible ? 1 : 0,
+          borderLeft: rightPanelVisible ? '0.5px solid var(--c-border-subtle)' : 'none',
+          pointerEvents: rightPanelVisible ? 'auto' : 'none',
+        }}
+      >
+        <RightPanel tabs={[]} activeTabId={null} onSelectTab={() => {}} />
+      </div>
     </div>
   )
 }

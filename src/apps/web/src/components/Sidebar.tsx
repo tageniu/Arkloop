@@ -267,7 +267,7 @@ export function Sidebar({
     upsertThread,
     markCompletionRead,
   } = useThreadList()
-  const { sidebarCollapsed: collapsed, toggleSidebar: onToggleCollapse, rightPanelOpen: narrow } = useSidebarUI()
+  const { sidebarCollapsed: collapsed, toggleSidebar: onToggleCollapse } = useSidebarUI()
   const { openSearchOverlay: onOpenSearchOverlay } = useSearchUI()
   const { settingsOpen: suppressActiveThreadHighlight, openSettings: onOpenSettings } = useSettingsUI()
   const { appMode } = useAppModeUI()
@@ -1192,7 +1192,6 @@ export function Sidebar({
     recordPerfValue('sidebar_render_count', 1, 'count', {
       collapsed,
       desktopMode: !!desktopMode,
-      narrow: !!narrow,
       isPrivateMode: isPrivateModeEffective,
       threadCount: threads.length,
       starredCount: starredIds.length,
@@ -1493,8 +1492,7 @@ export function Sidebar({
       <aside
       ref={asideRef}
       className={[
-        'theme-surface-sidebar flex h-full shrink-0 flex-col overflow-hidden bg-[var(--c-bg-sidebar)]',
-        collapsed ? 'w-[48px]' : narrow ? 'w-[224px]' : desktopMode ? 'w-[284px]' : 'w-[304px]',
+        'theme-surface-sidebar flex h-full w-full shrink-0 flex-col overflow-hidden bg-[var(--c-bg-sidebar)]',
       ].join(' ')}
       style={{
         transition: 'width 280ms cubic-bezier(0.16,1,0.3,1)',

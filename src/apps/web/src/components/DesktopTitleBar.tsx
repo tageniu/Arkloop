@@ -8,6 +8,8 @@ import {
   Minus,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   Square,
   X,
 } from 'lucide-react'
@@ -37,6 +39,8 @@ type Props = {
   showIncognitoToggle?: boolean
   isPrivateMode?: boolean
   onTogglePrivateMode?: () => void
+  rightPanelOpen?: boolean
+  onToggleRightPanel?: () => void
   hasAppUpdate?: boolean
   appUpdateState?: AppUpdaterState | null
   onCheckAppUpdate?: () => void
@@ -54,6 +58,8 @@ export function DesktopTitleBar({
   showIncognitoToggle = true,
   isPrivateMode,
   onTogglePrivateMode,
+  rightPanelOpen = false,
+  onToggleRightPanel,
   hasAppUpdate = false,
   appUpdateState,
   onCheckAppUpdate,
@@ -243,6 +249,20 @@ export function DesktopTitleBar({
               ].join(' ')}
             >
               <Glasses size={17} />
+            </button>
+          )}
+          {onToggleRightPanel && (
+            <button
+              onClick={onToggleRightPanel}
+              title="Right panel"
+              className={[
+                'flex h-8 w-8 items-center justify-center rounded-md transition-colors',
+                rightPanelOpen
+                  ? 'bg-[var(--c-bg-deep)] text-[var(--c-text-primary)]'
+                  : 'text-[var(--c-text-tertiary)] hover:bg-[var(--c-bg-deep)] hover:text-[var(--c-text-secondary)]',
+              ].join(' ')}
+            >
+              {rightPanelOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
             </button>
           )}
           {hasAppUpdate && (

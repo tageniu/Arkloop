@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { isDesktop, getDesktopApi } from '@arkloop/shared/desktop'
 import { LoadingPage, TimeZoneProvider } from '@arkloop/shared'
@@ -22,9 +22,29 @@ import {
   useSidebarUI,
   useSkillPromptUI,
   useTitleBarIncognitoUI,
+  useTitleBarRightPanelUI,
 } from '../contexts/app-ui'
 import { useCredits } from '../contexts/credits'
 import { isPerfDebugEnabled, recordPerfValue } from '../perfDebug'
+
+const SIDEBAR_WIDTH_STORAGE_KEY = 'arkloop:web:sidebar_width'
+const SIDEBAR_COLLAPSED_WIDTH = 48
+const SIDEBAR_DEFAULT_WIDTH = 284
+const SIDEBAR_MIN_WIDTH = 224
+const SIDEBAR_MAX_WIDTH = 420
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH)
+}
+
+function readSidebarWidth(): number {
+  try {
+    const raw = Number(localStorage.getItem?.(SIDEBAR_WIDTH_STORAGE_KEY))
+    return Number.isFinite(raw) ? clampSidebarWidth(raw) : SIDEBAR_DEFAULT_WIDTH
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH
+  }
+}
 
 const MainViewport = memo(function MainViewport({
   accessToken,
@@ -153,13 +173,14 @@ export function AppLayout() {
     togglePrivateMode,
     getFilteredThreads,
   } = useThreadList()
-  const { sidebarCollapsed, sidebarHiddenByWidth, toggleSidebar } = useSidebarUI()
+  const { sidebarCollapsed, sidebarHiddenByWidth, rightPanelOpen, toggleSidebar } = useSidebarUI()
   const { isSearchMode, searchOverlayOpen, exitSearchMode, closeSearchOverlay } = useSearchUI()
   const { appMode, availableAppModes, setAppMode } = useAppModeUI()
   const { openSettings, closeSettings } = useSettingsUI()
   const { closeNotifications } = useNotificationsUI()
   const { queueSkillPrompt } = useSkillPromptUI()
   const { triggerTitleBarIncognitoClick } = useTitleBarIncognitoUI()
+  const { triggerTitleBarRightPanelClick } = useTitleBarRightPanelUI()
   useCredits()
   const { t } = useLocale()
   const navigate = useNavigate()
@@ -168,6 +189,8 @@ export function AppLayout() {
 
   const [appUpdateState, setAppUpdateState] = useState<import('@arkloop/shared/desktop').AppUpdaterState | null>(null)
   const [productUpdateNotifications, setProductUpdateNotifications] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth)
+  const [sidebarResizing, setSidebarResizing] = useState(false)
 
   // app updater
   useEffect(() => {
@@ -208,6 +231,42 @@ export function AppLayout() {
   const handleTitleBarOpenSettings = useCallback((tab?: SettingsTab | 'voice') => {
     openSettings(tab)
   }, [openSettings])
+
+  const handleSidebarResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (sidebarCollapsed) return
+    event.preventDefault()
+    setSidebarResizing(true)
+    const startX = event.clientX
+    const startWidth = sidebarWidth
+    const pointerId = event.pointerId
+    event.currentTarget.setPointerCapture(pointerId)
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const next = clampSidebarWidth(startWidth + moveEvent.clientX - startX)
+      setSidebarWidth(next)
+    }
+
+    const stopResize = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+      setSidebarResizing(false)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+  }, [sidebarCollapsed, sidebarWidth])
+
+  useEffect(() => {
+    if (!sidebarCollapsed) {
+      try {
+        localStorage.setItem?.(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth))
+      } catch {
+        // ignore unavailable storage
+      }
+    }
+  }, [sidebarCollapsed, sidebarWidth])
 
   const pathnameSearchOpen = location.pathname.endsWith('/search')
   const isSearchOpen = searchOverlayOpen || pathnameSearchOpen
@@ -297,6 +356,8 @@ export function AppLayout() {
             showIncognitoToggle={activeAppMode !== 'work'}
             isPrivateMode={titleBarIncognitoActive}
             onTogglePrivateMode={handleDesktopTitleBarIncognitoClick}
+            rightPanelOpen={rightPanelOpen}
+            onToggleRightPanel={() => triggerTitleBarRightPanelClick()}
             hasAppUpdate={hasAppUpdate}
             onCheckAppUpdate={handleCheckAppUpdate}
             appUpdateState={appUpdateState}
@@ -308,12 +369,29 @@ export function AppLayout() {
 
         <div className="flex min-h-0 flex-1">
           {!sidebarHiddenByWidth && (
-            <Sidebar
-              threads={filteredThreads}
-              onNewThread={handleNewThread}
-              onThreadDeleted={handleThreadDeleted}
-              beforeNavigateToThread={handleBeforeNavigateToThread}
-            />
+            <div
+              className="relative h-full shrink-0 overflow-hidden"
+              style={{
+                width: sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth,
+                transition: sidebarResizing ? undefined : 'width 280ms cubic-bezier(0.16,1,0.3,1)',
+              }}
+            >
+              <Sidebar
+                threads={filteredThreads}
+                onNewThread={handleNewThread}
+                onThreadDeleted={handleThreadDeleted}
+                beforeNavigateToThread={handleBeforeNavigateToThread}
+              />
+              {!sidebarCollapsed && (
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  title="Resize history"
+                  onPointerDown={handleSidebarResizeStart}
+                  className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize"
+                />
+              )}
+            </div>
           )}
 
           <LayoutMain

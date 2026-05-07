@@ -1,0 +1,20 @@
+.right-panel-tab {
+  position: relative;
+}
+
+.right-panel-tab__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: mask-image 180ms ease, -webkit-mask-image 180ms ease;
+}
+
+.right-panel-tab--closable:hover .right-panel-tab__title {
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent calc(100% - 8px));
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 32px), transparent calc(100% - 8px));
+}
+
+.right-panel-tab__close {
+  transition: opacity 180ms ease;
+}

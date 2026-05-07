@@ -837,6 +837,8 @@ function OutletShell({ context }: { context: LegacyOutletContext }) {
     consumeSkillPrompt: () => {},
     setTitleBarIncognitoClick: () => {},
     triggerTitleBarIncognitoClick: (fallback) => fallback(),
+    setTitleBarRightPanelClick: () => {},
+    triggerTitleBarRightPanelClick: (fallback) => fallback?.(),
   }
 
   const creditsValue: CreditsContextValue = {

@@ -25,6 +25,10 @@ import { SourcesPanel } from './SourcesPanel'
 import { CodeExecutionPanel } from './CodeExecutionPanel'
 import { DocumentPanel } from './DocumentPanel'
 import { AgentPanel } from './AgentPanel'
+import { RightPanel, type RightPanelTab } from './RightPanel'
+import { LocalFileTree } from './local-files/LocalFileTree'
+import { ResourcePreviewPanel } from './resource-preview/ResourcePreviewPanel'
+import type { ResourceRef } from './resource-preview/types'
 import { ChatTitleMenu } from './ChatTitleMenu'
 import { MessageList } from './MessageList'
 import { CopSegmentBlocks } from './CopSegmentBlocks'
@@ -60,7 +64,7 @@ import { applyAgentEventToWebSearchSteps } from '../webSearchTimelineFromAgentEv
 import { useLocale } from '../contexts/LocaleContext'
 import { useAuth } from '../contexts/auth'
 import { useThreadList } from '../contexts/thread-list'
-import { useAppModeUI, useSettingsUI } from '../contexts/app-ui'
+import { useAppModeUI, useRightPanelActions, useSettingsUI, useTitleBarRightPanelUI } from '../contexts/app-ui'
 import { useChatSession } from '../contexts/chat-session'
 import { useMessageStore } from '../contexts/message-store'
 import { useRunLifecycle } from '../contexts/run-lifecycle'
@@ -156,10 +160,11 @@ import {
   writeRunThinkingHint,
 } from '../storage'
 
-const sidePanelWidth = 360
-const documentPanelWidth = 560
-const chatContentPadding = { panelClosed: '60px', panelOpen: '40px' } as const
-const chatInputPadding = { panelClosed: '60px', panelOpen: '40px', work: '14px' } as const
+const chatContentPadding = { panelClosed: 'clamp(24px, 5vw, 60px)', panelOpen: 'clamp(16px, 3vw, 40px)' } as const
+const chatInputPadding = { panelClosed: 'clamp(24px, 5vw, 60px)', panelOpen: 'clamp(16px, 3vw, 40px)', work: '14px' } as const
+const rightPanelDefaultWidth = 760
+const rightPanelMinWidth = 420
+const chatViewMinWidth = 520
 
 function errorNoticeKey(error: AppError): string {
   let details = ''
@@ -178,6 +183,23 @@ function isInterruptedRunStatus(status: string | null | undefined): boolean {
 function chooseThinkingHint(hints: readonly string[]): string {
   if (hints.length === 0) return ''
   return hints[Math.floor(Math.random() * hints.length)] ?? hints[0] ?? ''
+}
+
+function resourceTitle(resource: ResourceRef): string {
+  if (resource.kind === 'artifact') return resource.title ?? resource.filename ?? 'Artifact'
+  if (resource.kind === 'local-file') return resource.name ?? resource.path.split('/').pop() ?? resource.path
+  return resource.name ?? resource.path.split('/').pop() ?? resource.path
+}
+
+function resourceTabId(resource: ResourceRef): string {
+  if (resource.kind === 'artifact') return `resource:artifact:${resource.key}`
+  if (resource.kind === 'local-file') return `resource:local:${resource.rootPath}:${resource.path}`
+  return `resource:workspace:${resource.projectId ?? resource.runId ?? ''}:${resource.path}`
+}
+
+function clampRightPanelWidth(width: number, containerWidth: number): number {
+  const maxWidth = Math.max(rightPanelMinWidth, containerWidth - chatViewMinWidth)
+  return Math.min(Math.max(width, rightPanelMinWidth), maxWidth)
 }
 
 function isSameDraftDomain(left: InputDraftScope | null, right: InputDraftScope): boolean {
@@ -202,6 +224,13 @@ type DocumentPanelState = {
   artifacts: ArtifactRef[]
   runId?: string
 }
+
+type RightPanelStoredTab =
+  | { id: string; kind: 'source'; title: string; messageId: string }
+  | { id: string; kind: 'code'; title: string; execution: CodeExecution }
+  | { id: string; kind: 'document'; title: string; document: DocumentPanelState }
+  | { id: string; kind: 'agent'; title: string; agent: SubAgentRef }
+  | { id: string; kind: 'resource'; title: string; resource: ResourceRef }
 
 type LiveRunPaneProps = {
   isWorkMode: boolean
@@ -787,6 +816,8 @@ export const ChatView = memo(function ChatView() {
     markCompletionRead,
   } = useThreadList()
   const { appMode } = useAppModeUI()
+  const { setRightPanelOpen } = useRightPanelActions()
+  const { setTitleBarRightPanelClick } = useTitleBarRightPanelUI()
   const { openSettings: onOpenSettings } = useSettingsUI()
   const { threadId } = useChatSession()
   const currentThread = useMemo(
@@ -808,6 +839,12 @@ export const ChatView = memo(function ChatView() {
   const learningModeUpdateRef = useRef<Promise<void> | null>(null)
   const learningModeRequestSeqRef = useRef(0)
   const [learningModeUpdating, setLearningModeUpdating] = useState(false)
+  const [rightPanelVisible, setRightPanelVisible] = useState(false)
+  const chatViewRootRef = useRef<HTMLDivElement>(null)
+  const rightPanelRatioRef = useRef(0)
+  const [rightPanelWidth, setRightPanelWidth] = useState(rightPanelDefaultWidth)
+  const [rightPanelTabs, setRightPanelTabs] = useState<RightPanelStoredTab[]>([])
+  const [activeRightPanelTabId, setActiveRightPanelTabId] = useState<string | null>(null)
   const waitForThreadModeUpdates = useCallback(async () => {
     const pending = [planModeUpdateRef.current, learningModeUpdateRef.current].filter((item): item is Promise<void> => !!item)
     if (pending.length > 0) await Promise.all(pending)
@@ -914,6 +951,7 @@ export const ChatView = memo(function ChatView() {
     openCodePanel: openCodePanelState,
     openDocumentPanel: openDocumentPanelState,
     openAgentPanel: openAgentPanelState,
+    openResourcePanel,
     closePanel,
     closeShareModal,
   } = usePanels()
@@ -945,6 +983,7 @@ export const ChatView = memo(function ChatView() {
   const codePanelExecution = activePanel?.type === 'code' ? activePanel.execution : null
   const documentPanelArtifact = activePanel?.type === 'document' ? activePanel.artifact : null
   const agentPanelAgent = activePanel?.type === 'agent' ? activePanel.agent : null
+  const resourcePanelResource = activePanel?.type === 'resource' ? activePanel.resource : null
   const setSourcePanelMessageId = useCallback<React.Dispatch<React.SetStateAction<string | null>>>((value) => {
     const next = typeof value === 'function' ? value(sourcePanelMessageId) : value
     if (next) openSourcePanel(next)
@@ -960,13 +999,6 @@ export const ChatView = memo(function ChatView() {
     if (next) openDocumentPanelState(next)
     else if (activePanel?.type === 'document') closePanel()
   }, [activePanel, closePanel, documentPanelArtifact, openDocumentPanelState])
-  const lastCodePanelRef = useRef<CodeExecution | null>(null)
-  const lastDocumentPanelRef = useRef<DocumentPanelState | null>(null)
-  const lastAgentPanelRef = useRef<SubAgentRef | null>(null)
-  // 关闭动画期间保留上一次的数据
-  const lastPanelSourcesRef = useRef<WebSource[] | undefined>(undefined)
-  const lastPanelQueryRef = useRef<string | undefined>(undefined)
-
   // --- Work todo 进度 ---
   const { showRunDetailButton, showDebugPanel, runDetailPanelRunId, setRunDetailPanelRunId } = useDevTools()
 
@@ -2199,96 +2231,250 @@ export const ChatView = memo(function ChatView() {
   }, [messages, messageSourcesMap])
 
   const sourcePanelSources = sourcePanelMessageId ? resolvedMessageSources.get(sourcePanelMessageId) : undefined
-  const sourcePanelUserQuery = useMemo(() => {
-    if (!sourcePanelMessageId) return undefined
-    const idx = messages.findIndex((m) => m.id === sourcePanelMessageId)
-    for (let i = idx - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') return messages[i].content
-    }
-    return undefined
-  }, [sourcePanelMessageId, messages])
-
-  // 保留最近一次数据，使关闭时面板内容在过渡动画期间仍可见
-  if (sourcePanelSources) lastPanelSourcesRef.current = sourcePanelSources
-  if (sourcePanelUserQuery !== undefined) lastPanelQueryRef.current = sourcePanelUserQuery
-  if (codePanelExecution) lastCodePanelRef.current = codePanelExecution
-  if (documentPanelArtifact) lastDocumentPanelRef.current = documentPanelArtifact
-  if (agentPanelAgent) lastAgentPanelRef.current = agentPanelAgent
-  const panelDisplaySources = sourcePanelSources ?? lastPanelSourcesRef.current
-  const panelDisplayQuery = sourcePanelUserQuery ?? lastPanelQueryRef.current
-  const codePanelDisplay = codePanelExecution ?? lastCodePanelRef.current
-  const documentPanelDisplay = documentPanelArtifact ?? lastDocumentPanelRef.current
-  const agentPanelDisplay = agentPanelAgent ?? lastAgentPanelRef.current
+  const workPanelFolder = threadId ? resolveThreadWorkFolder(threadId) : undefined
   const isSourcePanelOpen = !!(sourcePanelSources && sourcePanelSources.length > 0)
-  const isCodePanelOpen = !!codePanelExecution
-  const isDocumentPanelOpen = !!documentPanelArtifact
-  const isAgentPanelOpen = !!agentPanelAgent
-  const isPanelOpen = isSourcePanelOpen || isCodePanelOpen || isDocumentPanelOpen || isAgentPanelOpen
+  const isPanelOpen = rightPanelVisible
 
-  const sourcesPanelContent = useMemo(() => {
-    if (!isSourcePanelOpen || !panelDisplaySources || panelDisplaySources.length === 0) return null
-    return (
-      <div style={{ width: `${sidePanelWidth}px`, height: '100%', contain: 'layout style' }}>
-        <SourcesPanel
-          sources={panelDisplaySources}
-          userQuery={panelDisplayQuery}
-          onClose={() => setSourcePanelMessageId(null)}
-        />
-      </div>
-    )
-  }, [isSourcePanelOpen, panelDisplaySources, panelDisplayQuery, setSourcePanelMessageId])
+  useEffect(() => {
+    if (activePanel) setRightPanelVisible(true)
+  }, [activePanel])
 
-  const codePanelContent = useMemo(() => {
-    if (!isCodePanelOpen || !codePanelDisplay) return null
-    return (
-      <div style={{ width: `${sidePanelWidth}px`, height: '100%', contain: 'layout style' }}>
-        <CodeExecutionPanel
-          execution={codePanelDisplay}
-          onClose={() => setCodePanelExecution(null)}
-        />
-      </div>
-    )
-  }, [isCodePanelOpen, codePanelDisplay, setCodePanelExecution])
+  useEffect(() => {
+    setRightPanelOpen(isPanelOpen)
+  }, [isPanelOpen, setRightPanelOpen])
 
-  const documentPanelContent = useMemo(() => {
-    if (!isDocumentPanelOpen || !documentPanelDisplay) return null
-    return (
-      <div style={{ width: `${documentPanelWidth}px`, height: '100%', contain: 'layout style' }}>
-        <DocumentPanel
-          artifact={documentPanelDisplay.artifact}
-          artifacts={documentPanelDisplay.artifacts}
-          accessToken={accessToken}
-          runId={documentPanelDisplay.runId}
-          onClose={() => {
-            stabilizeDocumentPanelScroll()
-            setDocumentPanelArtifact(null)
-          }}
-        />
-      </div>
-    )
-  }, [isDocumentPanelOpen, documentPanelDisplay, accessToken, stabilizeDocumentPanelScroll, setDocumentPanelArtifact])
+  useEffect(() => {
+    setTitleBarRightPanelClick(() => {
+      setRightPanelVisible((visible) => !visible)
+    })
+    return () => setTitleBarRightPanelClick(null)
+  }, [setTitleBarRightPanelClick])
 
-  const agentPanelContent = useMemo(() => {
-    if (!isAgentPanelOpen || !agentPanelDisplay) return null
-    return (
-      <div style={{ width: `${sidePanelWidth}px`, height: '100%', contain: 'layout style' }}>
-        <AgentPanel agent={agentPanelDisplay} onClose={closePanel} />
-      </div>
-    )
-  }, [isAgentPanelOpen, agentPanelDisplay, closePanel])
+  useEffect(() => {
+    if (!isPanelOpen) return
+    const root = chatViewRootRef.current
+    if (!root) return
+
+    const adaptToContainer = () => {
+      const containerWidth = root.clientWidth
+      setRightPanelWidth((width) => {
+        const ratio = rightPanelRatioRef.current || width / Math.max(containerWidth, 1)
+        const next = clampRightPanelWidth(containerWidth * ratio, containerWidth)
+        rightPanelRatioRef.current = next / Math.max(containerWidth, 1)
+        return next
+      })
+    }
+
+    adaptToContainer()
+    const observer = new ResizeObserver(adaptToContainer)
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [isPanelOpen])
+
+  const handleRightPanelResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    const root = chatViewRootRef.current
+    if (!root) return
+    const pointerId = event.pointerId
+    event.currentTarget.setPointerCapture(pointerId)
+    const rect = root.getBoundingClientRect()
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const next = clampRightPanelWidth(rect.right - moveEvent.clientX, rect.width)
+      rightPanelRatioRef.current = next / Math.max(rect.width, 1)
+      setRightPanelWidth(next)
+    }
+    const stopResize = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', stopResize)
+      window.removeEventListener('pointercancel', stopResize)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', stopResize)
+    window.addEventListener('pointercancel', stopResize)
+  }, [])
+
+  const upsertRightPanelTab = useCallback((tab: RightPanelStoredTab) => {
+    setRightPanelTabs((current) => {
+      const index = current.findIndex((item) => item.id === tab.id)
+      if (index < 0) return [...current, tab]
+      const next = [...current]
+      next[index] = tab
+      return next
+    })
+    setActiveRightPanelTabId(tab.id)
+  }, [])
+
+  const closeRightPanelTab = useCallback((id: string) => {
+    setRightPanelTabs((current) => {
+      const index = current.findIndex((item) => item.id === id)
+      if (index < 0) return current
+      const target = current[index]
+      if (target.kind === 'source') setSourcePanelMessageId(null)
+      else if (target.kind === 'code' && activePanel?.type === 'code' && activePanel.execution.id === target.execution.id) setCodePanelExecution(null)
+      else if (target.kind === 'document' && activePanel?.type === 'document' && activePanel.artifact.artifact.key === target.document.artifact.key) setDocumentPanelArtifact(null)
+      else if (target.kind === 'agent' && activePanel?.type === 'agent' && activePanel.agent.id === target.agent.id) closePanel()
+      else if (target.kind === 'resource' && activePanel?.type === 'resource' && resourceTabId(activePanel.resource) === target.id) closePanel()
+
+      const next = current.filter((item) => item.id !== id)
+      setActiveRightPanelTabId((activeId) => {
+        if (activeId !== id) return activeId
+        return next[index]?.id ?? next[index - 1]?.id ?? (workPanelFolder?.trim() ? 'files' : null)
+      })
+      return next
+    })
+  }, [activePanel, closePanel, setCodePanelExecution, setDocumentPanelArtifact, setSourcePanelMessageId, workPanelFolder])
+
+  useEffect(() => {
+    if (isSourcePanelOpen && sourcePanelMessageId) {
+      upsertRightPanelTab({ id: `source:${sourcePanelMessageId}`, kind: 'source', title: 'Sources', messageId: sourcePanelMessageId })
+    }
+  }, [isSourcePanelOpen, sourcePanelMessageId, upsertRightPanelTab])
+
+  useEffect(() => {
+    if (codePanelExecution) {
+      upsertRightPanelTab({ id: `code:${codePanelExecution.id}`, kind: 'code', title: 'Execution', execution: codePanelExecution })
+    }
+  }, [codePanelExecution, upsertRightPanelTab])
+
+  useEffect(() => {
+    if (documentPanelArtifact) {
+      const artifact = documentPanelArtifact.artifact
+      upsertRightPanelTab({
+        id: `document:${artifact.key}`,
+        kind: 'document',
+        title: artifact.title ?? artifact.filename,
+        document: documentPanelArtifact,
+      })
+    }
+  }, [documentPanelArtifact, upsertRightPanelTab])
+
+  useEffect(() => {
+    if (agentPanelAgent) {
+      upsertRightPanelTab({
+        id: `agent:${agentPanelAgent.id}`,
+        kind: 'agent',
+        title: agentPanelAgent.nickname || agentPanelAgent.personaId || 'Agent',
+        agent: agentPanelAgent,
+      })
+    }
+  }, [agentPanelAgent, upsertRightPanelTab])
+
+  useEffect(() => {
+    if (resourcePanelResource) {
+      upsertRightPanelTab({
+        id: resourceTabId(resourcePanelResource),
+        kind: 'resource',
+        title: resourceTitle(resourcePanelResource),
+        resource: resourcePanelResource,
+      })
+    }
+  }, [resourcePanelResource, upsertRightPanelTab])
+
+  const rightPanelRenderedTabs = useMemo<RightPanelTab[]>(() => {
+    const tabs: RightPanelTab[] = []
+    if (workPanelFolder?.trim()) {
+      tabs.push({
+        id: 'files',
+        kind: 'files',
+        title: 'Files',
+        closable: false,
+        content: <LocalFileTree rootPath={workPanelFolder} onOpenFile={openResourcePanel} />,
+      })
+    }
+
+    for (const tab of rightPanelTabs) {
+      if (tab.kind === 'source') {
+        const sources = resolvedMessageSources.get(tab.messageId)
+        if (!sources || sources.length === 0) continue
+        tabs.push({
+          id: tab.id,
+          kind: tab.kind,
+          title: tab.title,
+          content: (
+            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+              <SourcesPanel sources={sources} onClose={() => closeRightPanelTab(tab.id)} />
+            </div>
+          ),
+        })
+      } else if (tab.kind === 'code') {
+        tabs.push({
+          id: tab.id,
+          kind: tab.kind,
+          title: tab.title,
+          content: (
+            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+              <CodeExecutionPanel execution={tab.execution} onClose={() => closeRightPanelTab(tab.id)} />
+            </div>
+          ),
+        })
+      } else if (tab.kind === 'document') {
+        tabs.push({
+          id: tab.id,
+          kind: tab.kind,
+          title: tab.title,
+          content: (
+            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+              <DocumentPanel
+                artifact={tab.document.artifact}
+                artifacts={tab.document.artifacts}
+                accessToken={accessToken}
+                runId={tab.document.runId}
+                onClose={() => closeRightPanelTab(tab.id)}
+              />
+            </div>
+          ),
+        })
+      } else if (tab.kind === 'agent') {
+        tabs.push({
+          id: tab.id,
+          kind: tab.kind,
+          title: tab.title,
+          content: (
+            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+              <AgentPanel agent={tab.agent} onClose={() => closeRightPanelTab(tab.id)} />
+            </div>
+          ),
+        })
+      } else {
+        tabs.push({
+          id: tab.id,
+          kind: tab.kind,
+          title: tab.title,
+          content: <ResourcePreviewPanel resource={tab.resource} accessToken={accessToken} />,
+        })
+      }
+    }
+    return tabs
+  }, [
+    accessToken,
+    closePanel,
+    closeRightPanelTab,
+    openResourcePanel,
+    resolvedMessageSources,
+    rightPanelTabs,
+    workPanelFolder,
+  ])
+
+  const effectiveRightPanelTabId = rightPanelRenderedTabs.some((tab) => tab.id === activeRightPanelTabId)
+    ? activeRightPanelTabId
+    : rightPanelRenderedTabs[0]?.id ?? null
 
   const openCodePanel = useCallback((ce: CodeExecution) => {
     if (codePanelExecution?.id === ce.id) {
-      closePanel()
+      setRightPanelVisible(true)
+      setActiveRightPanelTabId(`code:${ce.id}`)
       return
     }
     openCodePanelState(ce)
-  }, [closePanel, codePanelExecution?.id, openCodePanelState])
+  }, [codePanelExecution?.id, openCodePanelState])
 
   const openDocumentPanel = useCallback((artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => {
     stabilizeDocumentPanelScroll(options?.trigger)
     if (documentPanelArtifact?.artifact.key === artifact.key) {
-      closePanel()
+      setRightPanelVisible(true)
+      setActiveRightPanelTabId(`document:${artifact.key}`)
       return
     }
     openDocumentPanelState({
@@ -2296,7 +2482,7 @@ export const ChatView = memo(function ChatView() {
       artifacts: options?.artifacts ?? [],
       runId: options?.runId,
     })
-  }, [closePanel, documentPanelArtifact?.artifact.key, openDocumentPanelState, stabilizeDocumentPanelScroll])
+  }, [documentPanelArtifact?.artifact.key, openDocumentPanelState, stabilizeDocumentPanelScroll])
 
   // COP step 计数：timeline 中所有非 finished 的点
   const dedupedTopLevelCodeExecutions = useMemo(() => {
@@ -2485,8 +2671,9 @@ export const ChatView = memo(function ChatView() {
 
   const hasMessages = messages.length > 0
   const inputHorizontalPadding = isWorkMode
-    ? (isPanelOpen ? chatContentPadding.panelOpen : chatContentPadding.panelClosed)
+    ? chatInputPadding.work
     : (isPanelOpen ? chatInputPadding.panelOpen : chatInputPadding.panelClosed)
+  const messageHorizontalPadding = isPanelOpen ? chatContentPadding.panelOpen : chatContentPadding.panelClosed
 
   const chatInputEl = useMemo(() => (
     <ChatInput
@@ -2629,13 +2816,15 @@ export const ChatView = memo(function ChatView() {
   }
 
   return (
-    <div className="theme-surface-page relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[var(--c-bg-page)]">
-      <ChatTitleMenu />
-
-      {/* 主体区域：消息 + 输入 + 可选的 sources 侧边面板 */}
-      <div className="relative flex flex-1 min-h-0">
-        <div className="relative flex flex-1 min-w-0 flex-col">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-10" style={{ background: 'linear-gradient(to bottom, var(--c-bg-page-gradient-stop, var(--c-bg-page)), transparent)' }} />
+    <div ref={chatViewRootRef} className="theme-surface-page relative flex min-w-0 flex-1 overflow-hidden bg-[var(--c-bg-page)]">
+      {/* Chat column + right panel: starts below the desktop Chat/Work titlebar. */}
+      <div className="relative flex flex-1 min-h-0 min-w-0">
+        <div
+          className="relative flex flex-1 min-w-0 flex-col"
+          style={{ minWidth: isPanelOpen ? chatViewMinWidth : 0 }}
+        >
+          <ChatTitleMenu />
+          <div className="pointer-events-none absolute inset-x-0 top-[60px] z-10 h-10" style={{ background: 'linear-gradient(to bottom, var(--c-bg-page-gradient-stop, var(--c-bg-page)), transparent)' }} />
           {/* 消息列表 */}
           <div
             ref={scrollContainerRef}
@@ -2647,7 +2836,7 @@ export const ChatView = memo(function ChatView() {
           style={{
             maxWidth: isWorkMode ? 1000 : 800,
             margin: '0 auto',
-            padding: `50px ${isPanelOpen ? chatContentPadding.panelOpen : chatContentPadding.panelClosed} var(--chat-input-area-height)`,
+            padding: `50px ${messageHorizontalPadding} var(--chat-input-area-height)`,
             gap: isWorkMode ? 0 : undefined,
           }}
           className="flex w-full flex-col gap-6"
@@ -2832,31 +3021,35 @@ export const ChatView = memo(function ChatView() {
           Arkloop is AI and can make mistakes. Please double-check responses.
         </p>
       </div>
-
         </div>
-        {/* 右侧面板：flex 兄弟节点；用 motion 驱动 width，避免嵌套 flex + CSS transition 偶发不插值 */}
-          <motion.div
-            className="flex-shrink-0 overflow-hidden"
-            initial={false}
-            animate={{
-              width: isDocumentPanelOpen
-                ? documentPanelWidth
-                : (isSourcePanelOpen || isCodePanelOpen || isAgentPanelOpen)
-                  ? sidePanelWidth
-                  : 0,
-            }}
-            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-            style={{
-              borderLeft: (panelDisplaySources || codePanelDisplay || documentPanelDisplay || agentPanelDisplay)
-                ? '0.5px solid var(--c-border-subtle)'
-                : 'none',
-            }}
-          >
-            {sourcesPanelContent}
-            {codePanelContent}
-            {documentPanelContent}
-            {agentPanelContent}
-          </motion.div>
+
+      <motion.div
+        className="relative flex-shrink-0 overflow-hidden bg-[var(--c-bg-page)]"
+        initial={false}
+        animate={{
+          width: isPanelOpen ? rightPanelWidth : 0,
+          opacity: isPanelOpen ? 1 : 0,
+          pointerEvents: isPanelOpen ? 'auto' : 'none',
+        }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        style={{
+          borderLeft: isPanelOpen ? '0.5px solid var(--c-border-subtle)' : 'none',
+        }}
+      >
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Resize"
+          onPointerDown={handleRightPanelResizeStart}
+          className="absolute inset-y-0 left-0 z-10 w-2 cursor-col-resize"
+        />
+        <RightPanel
+          tabs={rightPanelRenderedTabs}
+          activeTabId={effectiveRightPanelTabId}
+          onSelectTab={setActiveRightPanelTabId}
+          onCloseTab={closeRightPanelTab}
+        />
+      </motion.div>
       </div>
 
       {shareModalEl}
