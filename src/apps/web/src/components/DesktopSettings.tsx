@@ -8,7 +8,6 @@ import {
   Cpu,
   Brain,
   Database,
-  Bot,
   Radio,
   Puzzle,
   Server,
@@ -32,7 +31,6 @@ import { GeneralSettings } from "./settings/GeneralSettings";
 import { DesktopAppearanceSettings } from "./settings/DesktopAppearanceSettings";
 import { ProvidersSettings } from "./settings/ProvidersSettings";
 import { RoutingSettings } from "./settings/RoutingSettings";
-import { PersonasSettings } from "./settings/PersonasSettings";
 import { DesktopChannelsSettings } from "./settings/DesktopChannelsSettings";
 import { SkillsSettings } from "./settings/SkillsSettings";
 import { MCPSettings } from "./settings/MCPSettings";
@@ -56,7 +54,6 @@ export type DesktopSettingsKey =
   | "appearance"
   | "providers"
   | "routing"
-  | "personas"
   | "channels"
   | "skills"
   | "mcp"
@@ -97,7 +94,6 @@ const NAV_ENTRIES: NavEntry[] = [
   // 第三段：低频管理
   { header: "managementHeader" },
   { key: "tools",      icon: Wrench },
-  { key: "personas",   icon: Bot },
   { key: "routing",    icon: Route },
   { key: "about",      icon: Info },
   { key: "advanced",   icon: SlidersHorizontal },
@@ -432,8 +428,6 @@ export function DesktopSettings({
         return <ProvidersSettings accessToken={accessToken} />;
       case "routing":
         return <RoutingSettings accessToken={accessToken} />;
-      case "personas":
-        return <PersonasSettings accessToken={accessToken} />;
       case "channels":
         return <DesktopChannelsSettings accessToken={accessToken} />;
       case "skills":

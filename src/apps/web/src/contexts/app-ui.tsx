@@ -346,7 +346,6 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
         settings: 'general',
         skills: 'skills',
         models: 'providers',
-        agents: 'personas',
         channels: 'channels',
         connection: 'advanced',
         voice: 'advanced',

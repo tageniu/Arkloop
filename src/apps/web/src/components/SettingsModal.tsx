@@ -8,7 +8,6 @@ import {
   Coins,
   Puzzle,
   Cpu,
-  Bot,
   Radio,
   Wifi,
   Wrench,
@@ -20,7 +19,6 @@ import { useLocale } from '../contexts/LocaleContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { SkillsSettingsContent } from './SkillsSettingsContent'
 import { ProvidersSettings } from './settings/ProvidersSettings'
-import { AgentSettingsContent } from './AgentSettingsContent'
 import { ChannelsSettingsContent } from './ChannelsSettingsContent'
 import { ConnectionSettingsContent } from './ConnectionSettingsContent'
 import { AccountContent, ProfileContent } from './settings/AccountSettings'
@@ -33,7 +31,7 @@ import { ToolsSettings } from './settings/ToolsSettings'
 import { TimeZoneSettings } from './settings/TimeZoneSettings'
 import { isDesktop, isLocalMode } from '@arkloop/shared/desktop'
 
-export type SettingsTab = 'account' | 'appearance' | 'settings' | 'tools' | 'skills' | 'credits' | 'models' | 'agents' | 'channels' | 'connection' | 'updates'
+export type SettingsTab = 'account' | 'appearance' | 'settings' | 'tools' | 'skills' | 'credits' | 'models' | 'channels' | 'connection' | 'updates'
 
 type NavItem = { key: SettingsTab; icon: LucideIcon }
 
@@ -44,7 +42,6 @@ const BASE_NAV_ITEMS: NavItem[] = [
   { key: 'tools',      icon: Wrench },
   { key: 'skills',     icon: Puzzle },
   { key: 'models',     icon: Cpu },
-  { key: 'agents',     icon: Bot },
   { key: 'channels',   icon: Radio },
   { key: 'credits',    icon: Coins },
 ]
@@ -194,9 +191,6 @@ export function SettingsModal({ me, accessToken, initialTab = 'account', onClose
             )}
             {activeKey === 'models' && (
               <ProvidersSettings accessToken={accessToken} />
-            )}
-            {activeKey === 'agents' && (
-              <AgentSettingsContent accessToken={accessToken} />
             )}
             {activeKey === 'channels' && (
               <ChannelsSettingsContent accessToken={accessToken} />

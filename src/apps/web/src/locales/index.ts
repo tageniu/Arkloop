@@ -1125,17 +1125,22 @@ export interface LocaleStrings {
     // desktop connectors section
     desktopConnectorsTitle: string;
     desktopConnectorsDesc: string;
+    desktopConnectorsUnavailable: string;
     fetchConnectorTitle: string;
     fetchConnectorDesc: string;
     searchConnectorTitle: string;
     searchConnectorDesc: string;
     providerLabel: string;
+    providerNone: string;
     apiKeyLabel: string;
     apiKeyOptionalLabel: string;
     baseUrlLabel: string;
     connectorSaveBtn: string;
     connectorSaving: string;
     connectorSaved: string;
+    connectorSaveFailed: string;
+    connectorShowSecret: string;
+    connectorHideSecret: string;
     connectorSaveTimeout: string;
     connectorDefaultModel: string;
     connectorDefaultModelPlaceholder: string;
