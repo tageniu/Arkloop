@@ -22,6 +22,7 @@ import { AssistantThinkingMarkdown } from './ThinkingBlock'
 import { CopTimelineSegment } from './CopTimelineSegment'
 import { CopTimelineUnifiedRow } from './CopUnifiedRow'
 import { localizeTimelineLabel } from './labels'
+import { markerForCategory } from './markers'
 
 export type { WebSearchPhaseStep } from './types'
 
@@ -271,7 +272,7 @@ export function CopTimeline({
                         multiItems={multiItems}
                         dotColor={thinkingOnly.live && !isComplete ? 'var(--c-text-secondary)' : 'var(--c-border-mid)'}
                         dotTop={COP_TIMELINE_DOT_TOP}
-                        paddingBottom={8}
+                        paddingBottom={10}
                         horizontalMotion={false}
                       >
                         <div
@@ -345,8 +346,9 @@ export function CopTimeline({
                     multiItems={timelineSegments.length >= 2}
                     dotColor={segDotColor}
                     dotTop={segmentDotTop(seg)}
-                    paddingBottom={7}
+                    paddingBottom={10}
                     horizontalMotion={false}
+                    marker={markerForCategory(seg.category)}
                   >
                     <CopTimelineSegment
                       segment={seg}

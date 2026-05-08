@@ -9,9 +9,10 @@ import { useLocale } from '../../contexts/LocaleContext'
 import { COP_TIMELINE_CONTENT_PADDING_LEFT_PX, TypewriterText } from './utils'
 import { CopTimelineUnifiedRow } from './CopUnifiedRow'
 import { localizeTimelineLabel } from './labels'
+import { markerForFileOp } from './markers'
 
 const MONO = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
-const EXPLORE_VIEWPORT_BOTTOM_PAD = 10
+const EXPLORE_VIEWPORT_BOTTOM_PAD = 12
 const TIMELINE_ROW_TITLE_STYLE = {
   color: 'var(--c-cop-row-fg, var(--c-text-secondary))',
   fontSize: 'var(--c-cop-row-font-size)',
@@ -164,13 +165,13 @@ export function FileOpToolCard({ op }: { op: FileOpRef }) {
 }
 
 
-type FileOpToolRowProps = { op: FileOpRef; live?: boolean }
+type FileOpToolRowProps = { op: FileOpRef; live?: boolean; expandedOffsetLeft?: number }
 
 function areFileOpToolRowPropsEqual(prev: FileOpToolRowProps, next: FileOpToolRowProps): boolean {
-  return prev.op === next.op && prev.live === next.live
+  return prev.op === next.op && prev.live === next.live && prev.expandedOffsetLeft === next.expandedOffsetLeft
 }
 
-export const FileOpToolRow = memo(function FileOpToolRow({ op, live }: FileOpToolRowProps) {
+export const FileOpToolRow = memo(function FileOpToolRow({ op, live, expandedOffsetLeft = 0 }: FileOpToolRowProps) {
   const { locale } = useLocale()
   const [expanded, setExpanded] = useState(false)
   const [hovered, setHovered] = useState(false)
@@ -239,7 +240,11 @@ export const FileOpToolRow = memo(function FileOpToolRow({ op, live }: FileOpToo
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            style={{ overflow: 'hidden' }}
+            style={{
+              overflow: 'hidden',
+              marginLeft: expandedOffsetLeft,
+              width: expandedOffsetLeft < 0 ? `calc(100% + ${Math.abs(expandedOffsetLeft)}px)` : undefined,
+            }}
           >
             <div style={{ marginTop: 4, borderRadius: 8, background: 'var(--c-code-preview-bg)', overflow: 'hidden', border: '0.5px solid var(--c-border-subtle)' }}>
               {(cardTitle || cardSubtitle) && (
@@ -419,8 +424,9 @@ export function ExploreTimelineRow({ group, live, segmentLive, headerVariant = '
                 isLast={index === group.items.length - 1}
                 multiItems={group.items.length >= 2}
                 dotColor={statusColor(op.status)}
-                paddingBottom={8}
+                paddingBottom={10}
                 horizontalMotion={false}
+                marker={markerForFileOp(op)}
               >
                 <FileOpToolRow op={op} live={live} />
               </CopTimelineUnifiedRow>

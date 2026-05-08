@@ -19,8 +19,9 @@ import { QueryPill } from './utils'
 import { useLocale } from '../../contexts/LocaleContext'
 import { localizeTimelineLabel } from './labels'
 import type { Locale } from '../../locales'
+import { markerForStep, markerForToolName } from './markers'
 
-const EXPLORE_BOTTOM_PAD = 10
+const EXPLORE_BOTTOM_PAD = 12
 
 export function CopTimelineSegment({
   segment,
@@ -158,8 +159,9 @@ export function CopTimelineSegment({
                   multiItems={segment.items.length >= 2}
                   dotColor={itemDotColor(item)}
                   dotTop={itemDotTop(item)}
-                  paddingBottom={8}
+                  paddingBottom={10}
                   horizontalMotion={false}
+                  marker={markerForItem(item, pool)}
                 >
                   {renderItem(item, pool, isLive, onOpenCodeExecution, activeCodeExecutionId, onOpenSubAgent, accessToken, baseUrl, typography, locale)}
                 </CopTimelineUnifiedRow>
@@ -259,8 +261,9 @@ export function CopTimelineSegment({
                     multiItems={segment.items.length >= 2}
                     dotColor={itemDotColor(item)}
                     dotTop={itemDotTop(item)}
-                    paddingBottom={8}
+                    paddingBottom={10}
                     horizontalMotion={false}
+                    marker={markerForItem(item, pool)}
                   >
                     {renderItem(item, pool, isLive, onOpenCodeExecution, activeCodeExecutionId, onOpenSubAgent, accessToken, baseUrl, typography, locale)}
                   </CopTimelineUnifiedRow>
@@ -300,6 +303,14 @@ function itemDotTop(item: CopSubSegment['items'][number]): number | undefined {
     if (cat === 'exec' || cat === 'agent') return 9
   }
   return 6
+}
+
+function markerForItem(item: CopSubSegment['items'][number], pool: ResolvedPool) {
+  if (item.kind !== 'call') return { kind: 'dot' as const }
+  const toolCallId = item.call.toolCallId
+  const step = pool.steps.get(toolCallId)
+  if (step) return markerForStep(step)
+  return markerForToolName(item.call.toolName)
 }
 
 function renderItem(

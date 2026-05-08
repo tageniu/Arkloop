@@ -612,6 +612,37 @@ describe('copTimelinePayloadForSegment', () => {
     ])
   })
 
+  it('single tool is promoted to root without a COP wrapper', () => {
+    const entries = splitCopItemsByTopLevelTools([
+      call('read_1', 'read', 1),
+    ])
+
+    expect(entries.map((entry) => entry.kind === 'tool' ? `tool:${entry.item.call.toolName}` : `timeline:${entry.items.length}`)).toEqual([
+      'tool:read',
+    ])
+  })
+
+  it('timeline_title alone does not keep a single tool inside COP', () => {
+    const entries = splitCopItemsByTopLevelTools([
+      call('doc_1', 'document_write', 1),
+    ], { segmentTitle: 'Writing report' })
+
+    expect(entries.map((entry) => entry.kind === 'tool' ? `tool:${entry.item.call.toolName}` : `timeline:${entry.items.length}`)).toEqual([
+      'tool:document_write',
+    ])
+  })
+
+  it('single tool with thought stays inside COP as the one-step exception', () => {
+    const entries = splitCopItemsByTopLevelTools([
+      { kind: 'thinking', content: 'Need to write the report', seq: 1 },
+      call('doc_1', 'document_write', 2),
+    ])
+
+    expect(entries.map((entry) => entry.kind === 'tool' ? `tool:${entry.item.call.toolName}` : `timeline:${entry.items.length}`)).toEqual([
+      'timeline:2',
+    ])
+  })
+
   it('promotedCopTimelineEntries 将 timeline body 按提升 segment 切片', () => {
     const payload = copTimelinePayloadForSegment(
       {

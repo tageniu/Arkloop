@@ -1150,6 +1150,23 @@ function fileOpLabel(toolName: string, args: Record<string, unknown>): string {
   }
 }
 
+function fileOpInputPreview(toolName: string, args: Record<string, unknown>): string | undefined {
+  toolName = normalizeFileOpToolName(toolName)
+  const pick = (key: string) => {
+    const value = args[key]
+    return typeof value === 'string' && value.trim() !== '' ? value : undefined
+  }
+  switch (toolName) {
+    case 'write_file':
+      return pick('content')
+    case 'edit':
+    case 'edit_file':
+      return pick('new_string') ?? pick('replacement') ?? pick('content')
+    default:
+      return undefined
+  }
+}
+
 function memorySearchHitsToOutput(list: unknown[]): string {
   const trimAbstract = (s: string, max: number) =>
     s.length > max ? s.slice(0, max) + '…' : s
@@ -1408,6 +1425,7 @@ export function applyFileOpToolCall(
     : undefined
   const fallbackLabel = fileOpLabel(toolName, args)
   const presentation = presentationForTool(toolName, args, fallbackLabel)
+  const inputPreview = fileOpInputPreview(toolName, args)
   const appended: FileOpRef = {
     id: pickToolCallId(event),
     toolName,
@@ -1421,6 +1439,7 @@ export function applyFileOpToolCall(
     displayDescription: overrideLabel ?? presentation.description,
     displaySubject: presentation.subject,
     displayDetail: presentation.detail,
+    ...(inputPreview ? { output: inputPreview } : {}),
   }
   return { appended, nextOps: [...ops, appended] }
 }

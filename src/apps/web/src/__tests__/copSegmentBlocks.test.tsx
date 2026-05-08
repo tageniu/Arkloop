@@ -39,7 +39,7 @@ afterEach(() => {
 
 async function renderBlocks(
   segment: Extract<AssistantTurnSegment, { type: 'cop' }>,
-  options: { todoWritesForFinalDisplay?: TodoWriteRef[] } = {},
+  options: { todoWritesForFinalDisplay?: TodoWriteRef[]; live?: boolean; isComplete?: boolean } = {},
 ) {
   const container = document.createElement('div')
   document.body.appendChild(container)
@@ -52,7 +52,8 @@ async function renderBlocks(
           keyPrefix="test"
           fileOps={[{ id: 'read-1', toolName: 'read_file', label: 'Read app.tsx', status: 'success', seq: 2, filePath: 'app.tsx', displayKind: 'read' }]}
           sources={[]}
-          isComplete
+          isComplete={options.isComplete ?? true}
+          live={options.live}
           todoWritesForFinalDisplay={options.todoWritesForFinalDisplay}
         />
       </LocaleProvider>,
@@ -115,6 +116,81 @@ describe('CopSegmentBlocks', () => {
       expect(container.textContent).toContain('1 of 2 Done')
       expect(timeline).not.toBeNull()
       expect(timeline?.textContent).not.toContain('Write focused test')
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('renders single document_write as a root tool, not as one-step COP', async () => {
+    const { container, cleanup } = await renderBlocks({
+      type: 'cop',
+      title: null,
+      items: [
+        {
+          kind: 'call',
+          call: {
+            toolCallId: 'doc-1',
+            toolName: 'document_write',
+            arguments: { filename: 'report.md', content: '# Report\nBody' },
+          },
+          seq: 1,
+        },
+      ],
+    })
+    try {
+      expect(container.textContent).toContain('report.md')
+      expect(container.querySelector('[aria-label="Document"]')).not.toBeNull()
+      expect(container.querySelector('.cop-timeline-root')).toBeNull()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('timeline_title alone still renders single document_write as root', async () => {
+    const { container, cleanup } = await renderBlocks({
+      type: 'cop',
+      title: 'Writing report',
+      items: [
+        {
+          kind: 'call',
+          call: {
+            toolCallId: 'doc-1',
+            toolName: 'document_write',
+            arguments: { filename: 'report.md', content: '# Report\nBody' },
+          },
+          seq: 1,
+        },
+      ],
+    })
+    try {
+      expect(container.textContent).toContain('report.md')
+      expect(container.querySelector('[aria-label="Document"]')).not.toBeNull()
+      expect(container.querySelector('.cop-timeline-root')).toBeNull()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it('keeps single document_write with thought inside COP', async () => {
+    const { container, cleanup } = await renderBlocks({
+      type: 'cop',
+      title: null,
+      items: [
+        { kind: 'thinking', content: 'Need to write the report', seq: 1 },
+        {
+          kind: 'call',
+          call: {
+            toolCallId: 'doc-1',
+            toolName: 'document_write',
+            arguments: { filename: 'report.md', content: '# Report\nBody' },
+          },
+          seq: 2,
+        },
+      ],
+    })
+    try {
+      expect(container.textContent).toContain('document_write')
+      expect(container.querySelector('.cop-timeline-root')).not.toBeNull()
     } finally {
       cleanup()
     }

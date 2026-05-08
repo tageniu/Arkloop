@@ -21,6 +21,7 @@ type Props = {
   status: Status
   /** 仅流式时为 true：逐字平滑；历史/静态为 false 立即展示 */
   smooth?: boolean
+  expandedOffsetLeft?: number
 }
 
 const MONO = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'
@@ -129,7 +130,7 @@ function StatusBadge({ status }: { status: Status }) {
   )
 }
 
-export function ExecutionCard({ variant, toolName, label, displayDescription, code, output, emptyLabel, errorMessage, status, smooth = false }: Props) {
+export function ExecutionCard({ variant, toolName, label, displayDescription, code, output, emptyLabel, errorMessage, status, smooth = false, expandedOffsetLeft = 0 }: Props) {
   const { t, locale } = useLocale()
   const [expanded, setExpanded] = useState(false)
   const [cmdHovered, setCmdHovered] = useState(false)
@@ -272,7 +273,11 @@ export function ExecutionCard({ variant, toolName, label, displayDescription, co
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={expandTransition}
-            style={{ overflow: 'hidden' }}
+            style={{
+              overflow: 'hidden',
+              marginLeft: expandedOffsetLeft,
+              width: expandedOffsetLeft < 0 ? `calc(100% + ${Math.abs(expandedOffsetLeft)}px)` : undefined,
+            }}
           >
             <div style={{
               borderRadius: '8px',

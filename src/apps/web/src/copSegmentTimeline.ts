@@ -68,6 +68,7 @@ export type TodoWriteRef = {
 
 const CODE_EXECUTION_TOOL_NAMES = new Set(['python_execute', 'exec_command', 'continue_process', 'terminate_process'])
 const TODO_TOOL_NAMES = new Set(['todo_write'])
+const HARD_TOP_LEVEL_TOOL_NAMES = new Set([...CODE_EXECUTION_TOOL_NAMES, ...TODO_TOOL_NAMES])
 const SUB_AGENT_TOOL_NAMES = new Set([
   'spawn_agent',
   'send_input', 'wait_agent', 'resume_agent', 'close_agent', 'interrupt_agent',
@@ -91,14 +92,28 @@ function sortBySeq<T extends { seq?: number }>(items: T[]): T[] {
 }
 
 export function isTopLevelCopToolName(toolName: string): boolean {
-  return CODE_EXECUTION_TOOL_NAMES.has(toolName) || TODO_TOOL_NAMES.has(toolName)
+  return HARD_TOP_LEVEL_TOOL_NAMES.has(toolName)
 }
 
 export type SplitCopItemEntry =
   | { kind: 'timeline'; id: string; seq: number; items: CopBlockItem[] }
   | { kind: 'tool'; id: string; seq: number; item: Extract<CopBlockItem, { kind: 'call' }> }
 
-export function splitCopItemsByTopLevelTools(items: CopBlockItem[]): SplitCopItemEntry[] {
+export function splitCopItemsByTopLevelTools(
+  items: CopBlockItem[],
+  _options: { segmentTitle?: string | null } = {},
+): SplitCopItemEntry[] {
+  const calls = items.filter((item): item is Extract<CopBlockItem, { kind: 'call' }> => item.kind === 'call')
+  const hasProcessContext = items.some((item) => item.kind !== 'call')
+  if (!hasProcessContext && calls.length === 1) {
+    return [{
+      kind: 'tool',
+      id: calls[0]!.call.toolCallId,
+      seq: calls[0]!.seq,
+      item: calls[0]!,
+    }]
+  }
+
   const entries: SplitCopItemEntry[] = []
   let current: CopBlockItem[] = []
   let timelineIndex = 0
