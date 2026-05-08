@@ -49,6 +49,8 @@ describe('resource preview renderer registry', () => {
   it('按文件名修正 octet-stream 文本文件', () => {
     expect(guessMimeType('go.work')).toBe('text/plain')
     expect(normalizeMimeType('application/octet-stream', 'go.work')).toBe('text/plain')
+    expect(normalizeMimeType('application/octet-stream', '.env.example')).toBe('text/plain')
+    expect(normalizeMimeType('application/octet-stream', '.gitignore')).toBe('text/plain')
   })
 
   it('组件暴露可测的 renderer 标记', () => {

@@ -30,6 +30,12 @@ const EXT_MIME: Record<string, string> = {
 }
 
 const TEXT_FILENAMES = new Set([
+  '.dockerignore',
+  '.editorconfig',
+  '.env',
+  '.gitattributes',
+  '.gitignore',
+  '.npmrc',
   'license',
   'notice',
   'makefile',
@@ -39,6 +45,11 @@ const TEXT_FILENAMES = new Set([
   'security',
 ])
 
+function isTextFilename(filename: string): boolean {
+  if (TEXT_FILENAMES.has(filename)) return true
+  return filename.startsWith('.env.')
+}
+
 export function filenameFromPath(path: string): string {
   const trimmed = path.trim()
   if (!trimmed || trimmed === '/') return 'file'
@@ -47,7 +58,7 @@ export function filenameFromPath(path: string): string {
 
 export function guessMimeType(path: string): string {
   const filename = filenameFromPath(path).toLowerCase()
-  if (TEXT_FILENAMES.has(filename)) return 'text/plain'
+  if (isTextFilename(filename)) return 'text/plain'
   const ext = path.split('.').pop()?.toLowerCase() ?? ''
   return EXT_MIME[ext] ?? 'application/octet-stream'
 }
