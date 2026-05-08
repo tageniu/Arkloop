@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"context"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -341,9 +340,6 @@ func (rc *RunContext) SetIsPlanMode(active bool) {
 	rc.IsPlanMode = active
 	if active {
 		rc.CollaborationMode = CollaborationModePlan
-		if rc.PlanFilePath == "" {
-			rc.PlanFilePath = "plans/" + rc.Run.ThreadID.String() + ".md"
-		}
 	} else {
 		rc.CollaborationMode = CollaborationModeDefault
 	}
@@ -372,25 +368,20 @@ func (rc *RunContext) IsPlanModeActive() bool {
 	return rc != nil && rc.IsPlanMode
 }
 
-// PlanModeWritePathAllowed allows plan-mode maintenance only for the current thread plan file.
+// PlanModeWritePathAllowed allows a new plan file before binding, then only that file.
 func (rc *RunContext) PlanModeWritePathAllowed(path string) bool {
-	if rc == nil || rc.Run.ThreadID == uuid.Nil {
+	if rc == nil {
 		return false
 	}
 	raw := strings.TrimSpace(path)
-	if raw == "" || filepath.IsAbs(raw) {
-		return false
-	}
-	cleaned := filepath.ToSlash(filepath.Clean(raw))
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+	if raw == "" {
 		return false
 	}
 	target := strings.TrimSpace(rc.PlanFilePath)
-	if target == "" {
-		target = "plans/" + rc.Run.ThreadID.String() + ".md"
+	if target != "" {
+		return tools.PlanModeSamePath(rc.WorkDir, target, raw)
 	}
-	target = filepath.ToSlash(filepath.Clean(target))
-	return cleaned == target
+	return tools.PlanModePlanFileCandidate(rc.WorkDir, raw)
 }
 
 // IsHeartbeatRun implements tools/builtin/heartbeat_decision.PipelineBinding.

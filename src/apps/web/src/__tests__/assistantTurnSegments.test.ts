@@ -177,6 +177,77 @@ describe('buildAssistantTurnFromAgentEvents', () => {
     }))
   })
 
+  it('tool result 不会替 assistant 自动生成 plan 文件链接', () => {
+    const turn = buildAssistantTurnFromAgentEvents([
+      ev('r1', 1, 'tool-call', {
+        tool_name: 'write_file',
+        tool_call_id: 'write_1',
+        arguments: { file_path: 'plans/thread.md' },
+      }),
+      ev('r1', 2, 'tool-result', {
+        tool_name: 'write_file',
+        tool_call_id: 'write_1',
+        result: {
+          status: 'written',
+          artifact_kind: 'plan',
+          filename: 'thread.md',
+          artifact_uri: 'file:///Users/dev/.arkloop/home/plans/thread.md',
+        },
+      }),
+      ev('r1', 3, 'tool-call', { tool_name: 'exit_plan_mode', tool_call_id: 'exit_1', arguments: {} }),
+      ev('r1', 4, 'tool-result', {
+        tool_name: 'exit_plan_mode',
+        tool_call_id: 'exit_1',
+        result: {
+          status: 'plan_mode_exited',
+          artifact_kind: 'plan',
+          filename: 'thread.md',
+          artifact_uri: 'file:///Users/dev/.arkloop/home/plans/thread.md',
+        },
+      }),
+    ])
+
+    expect(turn.segments).toEqual([
+      {
+        type: 'cop',
+        title: null,
+        items: [
+          { kind: 'call',
+            call: {
+              toolCallId: 'write_1',
+              toolName: 'write_file',
+              arguments: { file_path: 'plans/thread.md' },
+              errorClass: undefined,
+              result: {
+                status: 'written',
+                artifact_kind: 'plan',
+                filename: 'thread.md',
+                artifact_uri: 'file:///Users/dev/.arkloop/home/plans/thread.md',
+              },
+            },
+            seq: 1,
+          },
+          { kind: 'call',
+            call: {
+              toolCallId: 'exit_1',
+              toolName: 'exit_plan_mode',
+              arguments: {},
+              errorClass: undefined,
+              result: {
+                status: 'plan_mode_exited',
+                artifact_kind: 'plan',
+                filename: 'thread.md',
+                artifact_uri: 'file:///Users/dev/.arkloop/home/plans/thread.md',
+              },
+            },
+            seq: 3,
+          },
+        ],
+      },
+    ])
+    expect(assistantTurnPlainText(turn)).toBe('')
+  })
+
   it('thinking 与首个 tool 同 cop（中间无正文）', () => {
     const turn = buildAssistantTurnFromAgentEvents([
       ev('r1', 1, 'assistant-delta', { role: 'assistant', channel: 'thinking', content_delta: 'plan' }),

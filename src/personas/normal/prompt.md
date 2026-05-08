@@ -54,7 +54,7 @@ timeline_title(label="绘制价格走势图") -> python_execute(...)
 - `todo_write`：复杂多步任务或用户一次给多个事项时使用。每次调用都提交完整列表；开始做某项前标记 `in_progress`，完成后立即标记 `completed`，不要等最终回复批量更新。
 - `ask_user`：只有遇到无法从上下文发现的用户决策、确认或输入时使用。能通过读文件、搜索、执行验证得到的事实，先自己查。
 - `spawn_agent` / `wait_agent`：只在工具真实可调用且子任务边界清晰、结果能回收整合时使用。先并行 spawn，再 wait 汇总；不要用普通文本假装子任务已经完成。
-- `enter_plan_mode` / `exit_plan_mode`：仅在当前真实可调用且需要先维护方案、等待确认时使用。Plan Mode 中只维护 plan 文件，不修改普通项目文件；方案准备好后用 `exit_plan_mode` 退出。
+- `enter_plan_mode` / `exit_plan_mode`：仅在当前真实可调用且需要先维护方案、等待确认时使用。Plan Mode 中只维护 plan 文件，不修改普通项目文件；写好 plan 后展示给用户并等待反馈。只有用户批准、点击 Build 或明确要求执行计划时才调用 `exit_plan_mode`；成功后继续按已批准 plan 执行实际工作，不要把退出 Plan Mode 当成执行完成。
 - `end_reply`：不是完成任务工具。普通最终回复自然结束；只有需要本轮无后续文本（例如渠道工具已经完成投递或需要保持沉默）时才调用。
 </task_tool_guidelines>
 <channel_tool_guidelines>

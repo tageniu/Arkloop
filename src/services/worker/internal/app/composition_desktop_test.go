@@ -1631,9 +1631,9 @@ func TestDesktopInputLoaderAppliesPlanMode(t *testing.T) {
 		if !got.IsPlanMode {
 			t.Fatal("expected desktop plan mode to be active")
 		}
-		wantPlanPath := "plans/" + threadID.String() + ".md"
-		if got.PlanFilePath != wantPlanPath {
-			t.Fatalf("unexpected plan path: got %q want %q", got.PlanFilePath, wantPlanPath)
+		wantPlanDir := tools.DefaultPlanDirectory()
+		if got.PlanFilePath != "" {
+			t.Fatalf("unexpected plan path: got %q", got.PlanFilePath)
 		}
 		if len(got.Messages) != len(got.ThreadMessageIDs) {
 			t.Fatalf("messages and ids must stay aligned: messages=%d ids=%d", len(got.Messages), len(got.ThreadMessageIDs))
@@ -1642,7 +1642,7 @@ func TestDesktopInputLoaderAppliesPlanMode(t *testing.T) {
 			t.Fatalf("plan mode should not synthesize history messages, got %#v", got.Messages)
 		}
 		for _, segment := range got.PromptSegments() {
-			if segment.Name == "plan_mode" && strings.Contains(segment.Text, wantPlanPath) {
+			if segment.Name == "plan_mode" && strings.Contains(segment.Text, wantPlanDir) {
 				return nil
 			}
 		}
@@ -1669,10 +1669,9 @@ func TestDesktopPersonaResolutionRestoresPlanModePromptAfterReset(t *testing.T) 
 	})
 	mw := desktopPersonaResolution(nil, func() *personas.Registry { return reg }, data.DesktopRunsRepository{}, data.DesktopRunEventsRepository{})
 
-	threadID := uuid.New()
 	rc := &pipeline.RunContext{
 		Run: data.Run{
-			ThreadID: threadID,
+			ThreadID: uuid.New(),
 		},
 		InputJSON: map[string]any{
 			"persona_id":         "test-persona",
@@ -1695,8 +1694,8 @@ func TestDesktopPersonaResolutionRestoresPlanModePromptAfterReset(t *testing.T) 
 	if !strings.Contains(gotRuntimePrompt, "<system-reminder>") {
 		t.Fatalf("expected plan mode prompt after desktop persona reset, got %q", gotRuntimePrompt)
 	}
-	if !strings.Contains(gotRuntimePrompt, "plans/"+threadID.String()+".md") {
-		t.Fatalf("expected plan path in runtime prompt, got %q", gotRuntimePrompt)
+	if !strings.Contains(gotRuntimePrompt, tools.DefaultPlanDirectory()) {
+		t.Fatalf("expected plan directory in runtime prompt, got %q", gotRuntimePrompt)
 	}
 }
 

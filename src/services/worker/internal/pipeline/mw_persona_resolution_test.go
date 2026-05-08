@@ -230,10 +230,9 @@ func TestPersonaResolutionRestoresPlanModePromptAfterReset(t *testing.T) {
 		nil, data.RunsRepository{}, data.RunEventsRepository{}, nil,
 	)
 
-	threadID := uuid.New()
 	rc := &pipeline.RunContext{
 		Run: data.Run{
-			ThreadID: threadID,
+			ThreadID: uuid.New(),
 		},
 		InputJSON: map[string]any{
 			"persona_id":         "test-persona",
@@ -256,8 +255,8 @@ func TestPersonaResolutionRestoresPlanModePromptAfterReset(t *testing.T) {
 	if !strings.Contains(gotRuntimePrompt, "<system-reminder>") {
 		t.Fatalf("expected plan mode prompt after persona reset, got %q", gotRuntimePrompt)
 	}
-	if !strings.Contains(gotRuntimePrompt, "plans/"+threadID.String()+".md") {
-		t.Fatalf("expected plan path in runtime prompt, got %q", gotRuntimePrompt)
+	if !strings.Contains(gotRuntimePrompt, tools.DefaultPlanDirectory()) {
+		t.Fatalf("expected plan directory in runtime prompt, got %q", gotRuntimePrompt)
 	}
 }
 

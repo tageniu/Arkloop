@@ -87,6 +87,31 @@ describe('resource preview renderer registry', () => {
     expect(html).toContain('hello')
   })
 
+  it('Markdown preview 会把 Cursor 风格 plan front matter 渲染成计划文档', () => {
+    const resource = preview('local-file', 'text/markdown', 'plan.md')
+    resource.text = `---
+name: Channel Phase 1 Implementation
+overview: 实现 Channel Integration Phase 1A。
+todos:
+  - id: 1a-migration
+    content: "创建 00130_channels.sql migration"
+    status: completed
+  - id: frontend-component
+    content: "新建 ChannelsSettingsContent.tsx"
+    status: pending
+isProject: false
+---`
+
+    const html = renderToStaticMarkup(<PreviewResourceView resource={resource} />)
+
+    expect(html).toContain('Channel Phase 1 Implementation')
+    expect(html).toContain('实现 Channel Integration Phase 1A')
+    expect(html).toContain('创建 00130_channels.sql migration')
+    expect(html).toContain('新建 ChannelsSettingsContent.tsx')
+    expect(html).not.toContain('isProject')
+    expect(html).not.toContain('1a-migration')
+  })
+
   it('browser resource 使用独立 iframe renderer', async () => {
     const originalOpen = window.open
     const openMock = vi.fn()
