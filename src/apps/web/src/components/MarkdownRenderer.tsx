@@ -1,5 +1,5 @@
 import { Children, useState, useCallback, useRef, useContext, createContext, Fragment, isValidElement, cloneElement, useMemo, useEffect, memo } from 'react'
-import type { ReactNode } from 'react'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
@@ -23,17 +23,29 @@ import { useActiveArtifactKey } from '../contexts/panels'
 import { recordPerfCount, recordPerfValue } from '../perfDebug'
 import { handleExternalAnchorClick } from '../openExternal'
 import { StreamingMarkdown } from './streaming-markdown/StreamingMarkdown'
+import type { ResourceRef } from './resource-preview/types'
+import {
+  ARTIFACT_URI_PREFIX,
+  FILE_URI_PREFIX,
+  WORKSPACE_URI_PREFIX,
+  artifactToResourceRef,
+  resourceTitle,
+  resourceUriToResourceRef,
+} from './resource-preview/resourceUri'
 
 type ArtifactsContextValue = {
   artifacts: ArtifactRef[]
   accessToken: string
   runId?: string
+  workFolder?: string | null
   onOpenDocument?: (artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
+  onOpenResource?: (resource: ResourceRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
   activePanelArtifactKey?: string | null
 }
 
 const ArtifactsContext = createContext<ArtifactsContextValue>({ artifacts: [], accessToken: '' })
 const STREAMING_MATH_COMMIT_INTERVAL_MS = 96
+const WINDOWS_ABSOLUTE_URL_RE = /^[a-zA-Z]:[\\/]/
 
 function isDocumentArtifact(artifact: ArtifactRef): boolean {
   if (artifact.display === 'panel') return true
@@ -186,16 +198,14 @@ function useStreamingRenderContent(content: string, throttle: boolean): string {
   return renderContent
 }
 
-const ARTIFACT_PREFIX = 'artifact:'
-const WORKSPACE_PREFIX = 'workspace:'
 const BARE_ARTIFACT_RE = /(?<!\]\()artifact:([A-Za-z0-9_-]+)/g
 
 const artifactSanitizeSchema = {
   ...defaultSchema,
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), 'artifact', 'workspace'],
-    src: [...(defaultSchema.protocols?.src ?? []), 'artifact', 'workspace'],
+    href: [...(defaultSchema.protocols?.href ?? []), 'artifact', 'workspace', 'file'],
+    src: [...(defaultSchema.protocols?.src ?? []), 'artifact', 'workspace', 'file'],
   },
 }
 
@@ -207,13 +217,19 @@ function preprocessBareArtifactRefs(content: string, artifacts: ArtifactRef[]): 
     const text = (artifact.filename || artifact.title || key)
       .replace(/[[\]()]/g, '\\$&')
       .replace(/\n/g, ' ')
-    return `[${text}](${ARTIFACT_PREFIX}${key})`
+    return `[${text}](${ARTIFACT_URI_PREFIX}${key})`
   })
 }
 
-// react-markdown v10 的 defaultUrlTransform 会过滤非标准协议，需要放行 artifact:/workspace:
+// react-markdown v10 的 defaultUrlTransform 会过滤非标准协议，需要放行资源 URI。
 const artifactUrlTransform: UrlTransform = (url) => {
-  if (url.startsWith(ARTIFACT_PREFIX) || url.startsWith(WORKSPACE_PREFIX)) return url
+  if (
+    url.startsWith(ARTIFACT_URI_PREFIX) ||
+    url.startsWith(WORKSPACE_URI_PREFIX) ||
+    url.startsWith(FILE_URI_PREFIX) ||
+    url.startsWith('/workspace/') ||
+    WINDOWS_ABSOLUTE_URL_RE.test(url)
+  ) return url
   return defaultUrlTransform(url)
 }
 
@@ -244,19 +260,65 @@ function buildWorkspaceFileRef(path: string): WorkspaceFileRef {
   }
 }
 
+function ResourceOpenButton({
+  resource,
+  children,
+  onOpen,
+}: {
+  resource: ResourceRef
+  children?: ReactNode
+  onOpen: (event: ReactMouseEvent<HTMLButtonElement>) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      style={{
+        display: 'inline',
+        padding: 0,
+        border: 0,
+        background: 'transparent',
+        color: 'var(--c-text-primary)',
+        font: 'inherit',
+        fontWeight: 400,
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--c-border-subtle)',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+      }}
+    >
+      {children ?? resourceTitle(resource)}
+    </button>
+  )
+}
+
 // artifact: 协议感知的 img 渲染器
 function ArtifactAwareImg({ src, alt }: { src?: string; alt?: string }) {
-  const { artifacts, accessToken, runId, onOpenDocument, activePanelArtifactKey } = useContext(ArtifactsContext)
+  const { artifacts, accessToken, runId, workFolder, onOpenDocument, onOpenResource, activePanelArtifactKey } = useContext(ArtifactsContext)
   const [failed, setFailed] = useState(false)
 
-  if (src?.startsWith(ARTIFACT_PREFIX)) {
-    const key = src.slice(ARTIFACT_PREFIX.length)
+  if (src?.startsWith(ARTIFACT_URI_PREFIX)) {
+    const key = src.slice(ARTIFACT_URI_PREFIX.length)
     const artifact = findArtifactByKey(artifacts, key)
 
     if (!artifact || !accessToken) return null
 
+    const openArtifact = (trigger: HTMLElement | null) => {
+      onOpenResource?.(artifactToResourceRef(artifact), { trigger, artifacts, runId })
+    }
+
     if (artifact.mime_type.startsWith('image/')) {
-      return <ArtifactImage artifact={artifact} accessToken={accessToken} />
+      const image = <ArtifactImage artifact={artifact} accessToken={accessToken} />
+      if (!onOpenResource) return image
+      return (
+        <button
+          type="button"
+          onClick={(event) => openArtifact(event.currentTarget)}
+          style={{ display: 'inline-block', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+        >
+          {image}
+        </button>
+      )
     }
     if (artifact.mime_type === 'text/html') {
       return <ArtifactHtmlPreview artifact={artifact} accessToken={accessToken} />
@@ -267,10 +329,36 @@ function ArtifactAwareImg({ src, alt }: { src?: string; alt?: string }) {
     return <ArtifactDownload artifact={artifact} accessToken={accessToken} />
   }
 
-  if (src?.startsWith(WORKSPACE_PREFIX)) {
-    const file = buildWorkspaceFileRef(src.slice(WORKSPACE_PREFIX.length))
+  if (src?.startsWith(WORKSPACE_URI_PREFIX)) {
+    const file = buildWorkspaceFileRef(src.slice(WORKSPACE_URI_PREFIX.length))
     if (!accessToken || !runId) return alt ? <span>{alt}</span> : null
-    return <WorkspaceResource file={file} runId={runId} accessToken={accessToken} />
+    const resource = resourceUriToResourceRef(src, { runId, workFolder })
+    const preview = <WorkspaceResource file={file} runId={runId} accessToken={accessToken} />
+    if (!resource || !onOpenResource) return preview
+    return (
+      <button
+        type="button"
+        onClick={(event) => onOpenResource(resource, { trigger: event.currentTarget, runId })}
+        style={{ display: 'inline-block', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+      >
+        {preview}
+      </button>
+    )
+  }
+
+  if (src) {
+    const resource = resourceUriToResourceRef(src, { runId, workFolder })
+    if (resource && onOpenResource) {
+      return (
+        <button
+          type="button"
+          onClick={(event) => onOpenResource(resource, { trigger: event.currentTarget, runId })}
+          style={{ display: 'inline-block', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
+        >
+          {alt || resourceTitle(resource)}
+        </button>
+      )
+    }
   }
 
   if (failed || !src) {
@@ -300,13 +388,25 @@ function ArtifactAwareImg({ src, alt }: { src?: string; alt?: string }) {
 
 // artifact: 协议感知的 a 渲染器
 function ArtifactAwareLink({ href, children }: { href?: string; children?: ReactNode }) {
-  const { artifacts, accessToken, runId, onOpenDocument, activePanelArtifactKey } = useContext(ArtifactsContext)
+  const { artifacts, accessToken, runId, workFolder, onOpenDocument, onOpenResource, activePanelArtifactKey } = useContext(ArtifactsContext)
 
-  if (href?.startsWith(ARTIFACT_PREFIX)) {
-    const key = href.slice(ARTIFACT_PREFIX.length)
+  if (href?.startsWith(ARTIFACT_URI_PREFIX)) {
+    const key = href.slice(ARTIFACT_URI_PREFIX.length)
     const artifact = findArtifactByKey(artifacts, key)
 
     if (!artifact || !accessToken) return <>{children}</>
+
+    if (onOpenResource) {
+      const resource = artifactToResourceRef(artifact)
+      return (
+        <ResourceOpenButton
+          resource={resource}
+          onOpen={(event) => onOpenResource(resource, { trigger: event.currentTarget, artifacts, runId })}
+        >
+          {children}
+        </ResourceOpenButton>
+      )
+    }
 
     // LLM 可能用 [text](artifact:key) 而非 ![text](artifact:key)，统一按 mime_type 分派
     if (artifact.mime_type.startsWith('image/')) {
@@ -322,10 +422,35 @@ function ArtifactAwareLink({ href, children }: { href?: string; children?: React
     return <ArtifactDownload artifact={artifact} accessToken={accessToken} />
   }
 
-  if (href?.startsWith(WORKSPACE_PREFIX)) {
-    const file = buildWorkspaceFileRef(href.slice(WORKSPACE_PREFIX.length))
+  if (href?.startsWith(WORKSPACE_URI_PREFIX)) {
+    const resource = resourceUriToResourceRef(href, { runId, workFolder })
+    if (resource && onOpenResource) {
+      return (
+        <ResourceOpenButton
+          resource={resource}
+          onOpen={(event) => onOpenResource(resource, { trigger: event.currentTarget, runId })}
+        >
+          {children}
+        </ResourceOpenButton>
+      )
+    }
+    const file = buildWorkspaceFileRef(href.slice(WORKSPACE_URI_PREFIX.length))
     if (!accessToken || !runId) return <>{children}</>
     return <WorkspaceResource file={file} runId={runId} accessToken={accessToken} />
+  }
+
+  if (href) {
+    const resource = resourceUriToResourceRef(href, { runId, workFolder })
+    if (resource && onOpenResource) {
+      return (
+        <ResourceOpenButton
+          resource={resource}
+          onOpen={(event) => onOpenResource(resource, { trigger: event.currentTarget, runId })}
+        >
+          {children}
+        </ResourceOpenButton>
+      )
+    }
   }
 
   return (
@@ -352,7 +477,12 @@ function hasStandaloneBlockPreview(children: ReactNode): boolean {
   if (!isValidElement<{ href?: string }>(child)) return false
 
   const href = typeof child.props?.href === 'string' ? child.props.href : ''
-  if (href.startsWith(ARTIFACT_PREFIX) || href.startsWith(WORKSPACE_PREFIX)) return true
+  if (
+    href.startsWith(ARTIFACT_URI_PREFIX) ||
+    href.startsWith(WORKSPACE_URI_PREFIX) ||
+    href.startsWith(FILE_URI_PREFIX) ||
+    href.startsWith('/workspace/')
+  ) return true
 
   return child.type === ArtifactHtmlPreview || child.type === WorkspaceResource
 }
@@ -734,7 +864,9 @@ type Props = {
   artifacts?: ArtifactRef[]
   accessToken?: string
   runId?: string
+  workFolder?: string | null
   onOpenDocument?: (artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
+  onOpenResource?: (resource: ResourceRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
   compact?: boolean
   typography?: TypographyMode
   /** 下一兄弟为 COP 等块时去掉末段底距，避免正文→COP 过大缝隙 */
@@ -742,7 +874,7 @@ type Props = {
   allowHtml?: boolean
 }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, disableMath, streaming = false, webSources, artifacts, accessToken, runId, onOpenDocument, compact = false, typography = 'default', trimTrailingMargin = false, allowHtml = false }: Props) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, disableMath, streaming = false, webSources, artifacts, accessToken, runId, workFolder, onOpenDocument, onOpenResource, compact = false, typography = 'default', trimTrailingMargin = false, allowHtml = false }: Props) {
   const sourceCount = webSources?.length ?? 0
   const artifactCount = artifacts?.length ?? 0
   const shouldThrottleStreamingMath = streaming && !disableMath && containsLikelyMath(content)
@@ -795,9 +927,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content, disabl
     artifacts: artifacts ?? [],
     accessToken: accessToken ?? '',
     runId,
+    workFolder,
     onOpenDocument,
+    onOpenResource,
     activePanelArtifactKey,
-  }), [accessToken, artifacts, onOpenDocument, runId, activePanelArtifactKey])
+  }), [accessToken, artifacts, onOpenDocument, onOpenResource, runId, workFolder, activePanelArtifactKey])
 
   const normalizedContent = useMemo(() => {
     const withArtifactLinks = preprocessBareArtifactRefs(renderContent, artifacts ?? [])

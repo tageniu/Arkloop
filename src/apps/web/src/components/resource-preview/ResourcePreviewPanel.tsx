@@ -119,7 +119,7 @@ export function ResourcePreviewPanel({ resource, accessToken, artifacts, runId, 
           ) : null}
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: mode === 'preview' && loaded?.mimeType === 'text/html' ? 'hidden' : 'auto' }}>
         {current.error ? (
           <div style={{ padding: 18, color: 'var(--c-text-muted)', fontSize: 13 }}>{current.error}</div>
         ) : loaded ? (

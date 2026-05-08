@@ -319,12 +319,12 @@ func ComposeNativeEngine(ctx context.Context, pool *pgxpool.Pool, directPool *pg
 		allLlmSpecs = append(allLlmSpecs, conversationtool.GroupSearchLlmSpec)
 	}
 
-	allLlmSpecs, artifactToolsRegistered, err := registerStoredArtifactTools(toolRegistry, executors, allLlmSpecs, artifactStore, pool, configResolver, routingLoader)
+	allLlmSpecs, artifactToolsRegistered, err := registerStoredArtifactTools(toolRegistry, executors, allLlmSpecs, artifactStore, pool, configResolver, routingLoader, messageAttachmentStore)
 	if err != nil {
 		return nil, err
 	}
 	if artifactToolsRegistered {
-		slog.InfoContext(ctx, "stored artifact tools registered", "tools", []string{"create_artifact", "document_write", "image_generate"})
+		slog.InfoContext(ctx, "stored artifact tools registered", "tools", []string{"create_artifact", "document_write", "image_generate", "resource_copy"})
 	}
 
 	var toolDescriptionOverridesRepo *data.ToolDescriptionOverridesRepository

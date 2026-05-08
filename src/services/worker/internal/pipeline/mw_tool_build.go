@@ -33,6 +33,7 @@ var runtimeManagedToolNames = map[string]struct{}{
 	"memory_timeline":      {},
 	"memory_write":         {},
 	"python_execute":       {},
+	"resource_copy":        {},
 	"resize_process":       {},
 	"terminate_process":    {},
 	"web_fetch":            {},

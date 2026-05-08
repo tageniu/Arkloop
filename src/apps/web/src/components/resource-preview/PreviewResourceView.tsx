@@ -95,8 +95,15 @@ function PreviewResourceContent({
   if (kind === 'iframe') {
     if (resource.text !== undefined) {
       return (
-        <div data-preview-renderer="iframe">
-          <ArtifactIframe mode="static" content={resource.text} contentType={resource.mimeType} frameTitle={resource.filename} />
+        <div data-preview-renderer="iframe" style={{ height: '100%', minHeight: 0 }}>
+          <ArtifactIframe
+            mode="static"
+            content={resource.text}
+            contentType={resource.mimeType}
+            frameTitle={resource.filename}
+            autoResize={false}
+            style={{ border: 0, borderRadius: 0, minHeight: 0, height: '100%' }}
+          />
         </div>
       )
     }
@@ -107,7 +114,7 @@ function PreviewResourceContent({
           src={resource.blobUrl}
           title={resource.filename}
           sandbox=""
-          style={{ width: '100%', minHeight: 320, border: '0.5px solid var(--c-border-subtle)', borderRadius: 8 }}
+          style={{ width: '100%', height: '100%', minHeight: 0, border: 0, borderRadius: 0 }}
         />
       )
     }

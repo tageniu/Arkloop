@@ -243,7 +243,7 @@ type RightPanelStoredTab =
   | { id: string; kind: 'code'; title: string; execution: CodeExecution }
   | { id: string; kind: 'document'; title: string; document: DocumentPanelState }
   | { id: string; kind: 'agent'; title: string; agent: SubAgentRef }
-  | { id: string; kind: 'resource'; title: string; resource: ResourceRef }
+  | { id: string; kind: 'resource'; title: string; resource: ResourceRef; artifacts?: ArtifactRef[]; runId?: string }
 
 type LiveRunPaneProps = {
   isWorkMode: boolean
@@ -266,6 +266,7 @@ type LiveRunPaneProps = {
   activeRunId: string | null
   activeSegmentId: string | null
   accessToken: string
+  workFolder?: string | null
   baseUrl: string
   thinkingHint?: string
   visibleStreamingWidgets: StreamingArtifactEntry[]
@@ -284,6 +285,7 @@ type LiveRunPaneProps = {
   showRunDetailButton: boolean
   setRunDetailPanelRunId: (runId: string | null) => void
   onOpenDocument: (artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
+  onOpenResource: (resource: ResourceRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
   onOpenCodeExecution: (ce: CodeExecution) => void
   onOpenSubAgent: (agent: SubAgentRef) => void
   onArtifactAction: ComponentProps<typeof WidgetBlock>['onAction']
@@ -313,6 +315,7 @@ const LiveRunPane = memo(function LiveRunPane({
   activeRunId,
   activeSegmentId,
   accessToken,
+  workFolder,
   baseUrl,
   thinkingHint,
   visibleStreamingWidgets,
@@ -331,6 +334,7 @@ const LiveRunPane = memo(function LiveRunPane({
   showRunDetailButton,
   setRunDetailPanelRunId,
   onOpenDocument,
+  onOpenResource,
   onOpenCodeExecution,
   onOpenSubAgent,
   onArtifactAction,
@@ -400,7 +404,9 @@ const LiveRunPane = memo(function LiveRunPane({
                 artifacts={currentRunArtifacts.length > 0 ? currentRunArtifacts : undefined}
                 accessToken={accessToken}
                 runId={activeRunId ?? undefined}
+                workFolder={workFolder}
                 onOpenDocument={onOpenDocument}
+                onOpenResource={onOpenResource}
                 typography={isWorkMode ? 'work' : 'default'}
                 trimTrailingMargin={
                   liveSegments[si + 1] == null ||
@@ -967,6 +973,7 @@ export const ChatView = memo(function ChatView() {
     openSourcePanel,
     openCodePanel: openCodePanelState,
     openDocumentPanel: openDocumentPanelState,
+    openResourcePanel: openResourcePanelState,
     openAgentPanel: openAgentPanelState,
     closePanel,
     closeShareModal,
@@ -2329,17 +2336,6 @@ export const ChatView = memo(function ChatView() {
     setActiveRightPanelTabId(tab.id)
   }, [])
 
-  const replaceRightPanelTab = useCallback((currentId: string, tab: RightPanelStoredTab) => {
-    setRightPanelTabs((current) => {
-      const index = current.findIndex((item) => item.id === currentId)
-      if (index < 0) return [...current, tab]
-      const next = [...current]
-      next[index] = tab
-      return next
-    })
-    setActiveRightPanelTabId(tab.id)
-  }, [])
-
   const pinLocalFileResource = useCallback((resource: LocalFileResourceRef) => {
     upsertRightPanelTab({
       id: `local-file:${++localFileTabSeqRef.current}`,
@@ -2410,14 +2406,26 @@ export const ChatView = memo(function ChatView() {
 
   useEffect(() => {
     if (resourcePanelResource) {
-      upsertRightPanelTab({
-        id: resourceTabId(resourcePanelResource),
-        kind: 'resource',
-        title: resourceTitle(resourcePanelResource),
-        resource: resourcePanelResource,
+      const tabId = resourceTabId(resourcePanelResource)
+      setRightPanelTabs((current) => {
+        const index = current.findIndex((item) => item.id === tabId)
+        const previous = index >= 0 ? current[index] : null
+        const nextTab: RightPanelStoredTab = {
+          id: tabId,
+          kind: 'resource',
+          title: resourceTitle(resourcePanelResource),
+          resource: resourcePanelResource,
+          artifacts: previous?.kind === 'resource' ? previous.artifacts : undefined,
+          runId: previous?.kind === 'resource' ? previous.runId : undefined,
+        }
+        if (index < 0) return [...current, nextTab]
+        const next = [...current]
+        next[index] = nextTab
+        return next
       })
+      setActiveRightPanelTabId(tabId)
     }
-  }, [resourcePanelResource, upsertRightPanelTab])
+  }, [resourcePanelResource])
 
   const rightPanelRenderedTabs = useMemo<RightPanelTab[]>(() => {
     const tabs: RightPanelTab[] = []
@@ -2504,40 +2512,20 @@ export const ChatView = memo(function ChatView() {
           ),
         })
       } else {
-        if (tab.resource.kind === 'local-file' && workPanelFolder?.trim()) {
-          tabs.push({
-            id: tab.id,
-            kind: tab.kind,
-            title: tab.title,
-            icon: localFileTabIcon(tab.resource),
-            content: (
-              <LocalFilesPanel
-                rootPath={tab.resource.rootPath}
-                accessToken={accessToken}
-                previewResource={tab.resource}
-                onPreviewResourceChange={(resource) => {
-                  if (!resource) {
-                    closeRightPanelTab(tab.id)
-                    return
-                  }
-                  replaceRightPanelTab(tab.id, {
-                    id: tab.id,
-                    kind: 'resource',
-                    title: resourceTitle(resource),
-                    resource,
-                  })
-                }}
-                onPinResource={pinLocalFileResource}
-              />
-            ),
-          })
-          continue
-        }
         tabs.push({
           id: tab.id,
           kind: tab.kind,
           title: tab.title,
-          content: <ResourcePreviewPanel resource={tab.resource} accessToken={accessToken} onClose={() => closeRightPanelTab(tab.id)} />,
+          icon: tab.resource.kind === 'local-file' ? localFileTabIcon(tab.resource) : undefined,
+          content: (
+            <ResourcePreviewPanel
+              resource={tab.resource}
+              accessToken={accessToken}
+              artifacts={tab.artifacts}
+              runId={tab.runId}
+              onClose={() => closeRightPanelTab(tab.id)}
+            />
+          ),
         })
       }
     }
@@ -2548,7 +2536,6 @@ export const ChatView = memo(function ChatView() {
     closeRightPanelTab,
     filesPreviewResource,
     pinLocalFileResource,
-    replaceRightPanelTab,
     resolvedMessageSources,
     rightPanelTabs,
     workPanelFolder,
@@ -2594,6 +2581,38 @@ export const ChatView = memo(function ChatView() {
       runId: options?.runId,
     })
   }, [closeRightPanelTab, documentPanelArtifact?.artifact.key, openDocumentPanelState, stabilizeDocumentPanelScroll])
+
+  const openResourcePanel = useCallback((resource: ResourceRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => {
+    stabilizeDocumentPanelScroll(options?.trigger)
+    const tabId = resourceTabId(resource)
+    if (resourcePanelResource && resourceTabId(resourcePanelResource) === tabId) {
+      if (isPanelOpenRef.current && effectiveRightPanelTabIdRef.current === tabId) {
+        closeRightPanelTab(tabId)
+        setRightPanelVisible(false)
+      } else {
+        upsertRightPanelTab({
+          id: tabId,
+          kind: 'resource',
+          title: resourceTitle(resource),
+          resource,
+          artifacts: options?.artifacts,
+          runId: options?.runId,
+        })
+        setRightPanelVisible(true)
+        setActiveRightPanelTabId(tabId)
+      }
+      return
+    }
+    upsertRightPanelTab({
+      id: tabId,
+      kind: 'resource',
+      title: resourceTitle(resource),
+      resource,
+      artifacts: options?.artifacts,
+      runId: options?.runId,
+    })
+    openResourcePanelState(resource)
+  }, [closeRightPanelTab, openResourcePanelState, resourcePanelResource, stabilizeDocumentPanelScroll, upsertRightPanelTab])
 
   // COP step 计数：timeline 中所有非 finished 的点
   const dedupedTopLevelCodeExecutions = useMemo(() => {
@@ -2981,6 +3000,7 @@ export const ChatView = memo(function ChatView() {
       activeRunId={activeRunId}
       activeSegmentId={activeSegmentIdRef.current}
       accessToken={accessToken}
+      workFolder={workPanelFolder}
       baseUrl={baseUrl}
       thinkingHint={thinkingHint}
       visibleStreamingWidgets={visibleStreamingWidgets}
@@ -2999,6 +3019,7 @@ export const ChatView = memo(function ChatView() {
       showRunDetailButton={showRunDetailButton}
       setRunDetailPanelRunId={setRunDetailPanelRunId}
       onOpenDocument={openDocumentPanel}
+      onOpenResource={openResourcePanel}
       onOpenCodeExecution={openCodePanel}
       onOpenSubAgent={openAgentPanelState}
       onArtifactAction={handleArtifactAction}
@@ -3029,6 +3050,7 @@ export const ChatView = memo(function ChatView() {
     openAgentPanelState,
     openCodePanel,
     openDocumentPanel,
+    openResourcePanel,
     pendingIncognito,
     preserveLiveRunUi,
     renderLiveCopItems,
@@ -3045,6 +3067,7 @@ export const ChatView = memo(function ChatView() {
     trailingLiveSegments,
     visibleStreamingArtifacts,
     visibleStreamingWidgets,
+    workPanelFolder,
   ])
 
   return (
@@ -3107,11 +3130,13 @@ export const ChatView = memo(function ChatView() {
                 handleFork={handleFork}
                 handleArtifactAction={handleArtifactAction}
                 openDocumentPanel={openDocumentPanel}
+                openResourcePanel={openResourcePanel}
                 openCodePanel={openCodePanel}
                 openAgentPanel={openAgentPanelState}
                 sourcePanelMessageId={sourcePanelMessageId}
                 setRunDetailPanelRunId={setRunDetailPanelRunId}
                 clearUserEnterAnimation={clearUserEnterAnimation}
+                workFolder={workPanelFolder}
                 />
               </CopTimelineLocalExpansionProvider>
 

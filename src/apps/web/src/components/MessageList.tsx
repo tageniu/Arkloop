@@ -26,6 +26,7 @@ import { createThreadShare } from '../api'
 import { readMessageTerminalStatus, readMessageWidgets, type ArtifactRef, type SubAgentRef, type WebSource } from '../storage'
 import { useLocation } from 'react-router-dom'
 import type { CodeExecution } from './CodeExecutionCard'
+import type { ResourceRef } from './resource-preview/types'
 import {
   turnHasCopThinkingItems,
   widgetToolCallIdsPlacedInTurn,
@@ -50,6 +51,7 @@ export const MessageList = memo(function MessageList({
   handleFork,
   handleArtifactAction,
   openDocumentPanel,
+  openResourcePanel,
   openCodePanel,
   openAgentPanel,
   showRunDetailButton,
@@ -58,6 +60,7 @@ export const MessageList = memo(function MessageList({
   currentRunCopHeaderOverride,
   clearUserEnterAnimation,
   isWorkMode,
+  workFolder,
 }: {
   lastTurnRef: React.RefObject<HTMLDivElement | null>
   lastUserPromptRef: React.RefObject<HTMLDivElement | null>
@@ -68,6 +71,7 @@ export const MessageList = memo(function MessageList({
   handleFork: (messageId: string) => Promise<void>
   handleArtifactAction: ComponentProps<typeof WidgetBlock>['onAction']
   openDocumentPanel: (artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
+  openResourcePanel: (resource: ResourceRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => void
   openCodePanel: (ce: CodeExecution) => void
   openAgentPanel: (agent: SubAgentRef) => void
   showRunDetailButton: boolean
@@ -86,6 +90,7 @@ export const MessageList = memo(function MessageList({
   }) => string | undefined
   clearUserEnterAnimation: () => void
   isWorkMode?: boolean
+  workFolder?: string | null
 }) {
   const { threadId, isSearchThread } = useChatSession()
   const { accessToken } = useAuth()
@@ -246,7 +251,9 @@ export const MessageList = memo(function MessageList({
                   artifacts={msgMeta?.artifacts}
                   accessToken={accessToken}
                   runId={msg.streamId ?? undefined}
+                  workFolder={workFolder}
                   onOpenDocument={openDocumentPanel}
+                  onOpenResource={openResourcePanel}
                   typography={isWorkMode ? 'work' : 'default'}
                   trimTrailingMargin={
                     historicalSegments[si + 1] == null ||
@@ -411,6 +418,7 @@ export const MessageList = memo(function MessageList({
           browserActions={msg.role === 'assistant' ? msgMeta?.browserActions : undefined}
           widgets={bubbleWidgets}
           accessToken={accessToken}
+          workFolder={workFolder}
           isWorkMode={isWorkMode}
           onWidgetAction={msg.role === 'assistant' ? handleArtifactAction : undefined}
           onShowSources={
@@ -426,6 +434,7 @@ export const MessageList = memo(function MessageList({
               : undefined
           }
           onOpenDocument={msg.role === 'assistant' ? openDocumentPanel : undefined}
+          onOpenResource={msg.role === 'assistant' ? openResourcePanel : undefined}
           onViewRunDetail={
             showRunDetailButton && msg.role === 'assistant' && msg.streamId
               ? () => setRunDetailPanelRunId(msg.streamId!)

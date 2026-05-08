@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { MarkdownRenderer } from '../components/MarkdownRenderer'
 import { LocaleProvider } from '../contexts/LocaleContext'
 import type { WebSource } from '../storage'
+import type { ResourceRef } from '../components/resource-preview/types'
 
 function renderMarkdown(content: string, options?: {
   webSources?: WebSource[]
@@ -221,6 +222,121 @@ describe('MarkdownRenderer', () => {
     expect(html).toContain('data-workspace-kind="loading"')
     expect(html).toContain('data-workspace-preview="text"')
     expect(html).toContain('example.py')
+  })
+
+  it('绝对 /workspace 文件路径点击应打开后端文件资源', async () => {
+    const onOpenResource = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => {
+        root.render(
+          <LocaleProvider>
+            <MarkdownRenderer
+              content="[报告](/workspace/reports/a.html)"
+              accessToken="token"
+              runId="run-1"
+              onOpenResource={onOpenResource}
+            />
+          </LocaleProvider>,
+        )
+      })
+
+      const button = container.querySelector('button')
+      expect(button).not.toBeNull()
+
+      await act(async () => {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+
+      const resource = onOpenResource.mock.calls[0]?.[0] as ResourceRef
+      expect(resource).toMatchObject({
+        kind: 'workspace-file',
+        path: '/reports/a.html',
+        runId: 'run-1',
+      })
+    } finally {
+      act(() => root.unmount())
+      container.remove()
+    }
+  })
+
+  it('work folder 内的绝对文件路径点击应打开 local-file resource', async () => {
+    const onOpenResource = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => {
+        root.render(
+          <LocaleProvider>
+            <MarkdownRenderer
+              content="[本地](/Users/dev/project/out/report.md)"
+              workFolder="/Users/dev/project"
+              onOpenResource={onOpenResource}
+            />
+          </LocaleProvider>,
+        )
+      })
+
+      const button = container.querySelector('button')
+      expect(button).not.toBeNull()
+
+      await act(async () => {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+
+      const resource = onOpenResource.mock.calls[0]?.[0] as ResourceRef
+      expect(resource).toMatchObject({
+        kind: 'local-file',
+        rootPath: '/Users/dev/project',
+        path: 'out/report.md',
+      })
+    } finally {
+      act(() => root.unmount())
+      container.remove()
+    }
+  })
+
+  it('Windows work folder 内的绝对文件路径点击应打开 local-file resource', async () => {
+    const onOpenResource = vi.fn()
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => {
+        root.render(
+          <LocaleProvider>
+            <MarkdownRenderer
+              content="[本地](C:/Users/dev/project/out/report.md)"
+              workFolder={'C:\\Users\\dev\\project'}
+              onOpenResource={onOpenResource}
+            />
+          </LocaleProvider>,
+        )
+      })
+
+      const button = container.querySelector('button')
+      expect(button).not.toBeNull()
+
+      await act(async () => {
+        button!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+
+      const resource = onOpenResource.mock.calls[0]?.[0] as ResourceRef
+      expect(resource).toMatchObject({
+        kind: 'local-file',
+        rootPath: 'C:\\Users\\dev\\project',
+        path: 'out/report.md',
+      })
+    } finally {
+      act(() => root.unmount())
+      container.remove()
+    }
   })
 
   it('流式纯文本时仍保持 markdown 容器结构稳定', () => {
