@@ -258,6 +258,14 @@ function browserTabSeqFromTabs(tabs: Array<{ id: string }>): number {
   }, 0)
 }
 
+function localFileTabSeqFromTabs(tabs: Array<{ id: string }>): number {
+  return tabs.reduce((max, tab) => {
+    const match = /^local-file:(\d+)$/.exec(tab.id)
+    if (!match) return max
+    return Math.max(max, Number(match[1]))
+  }, 0)
+}
+
 type LiveRunPaneProps = {
   isWorkMode: boolean
   showPendingThinkingShell: boolean
@@ -2306,8 +2314,15 @@ export const ChatView = memo(function ChatView() {
     setRightPanelTabOrder(saved?.tabOrder ?? [])
     setWebPanelResource(saved?.web ?? null)
     setExtraBrowserTabs(saved?.browserTabs ?? [])
+    setRightPanelTabs(saved?.resourceTabs.map((tab) => ({
+      id: tab.id,
+      kind: 'resource',
+      title: tab.title,
+      resource: tab.resource,
+    })) ?? [])
     setFilesPreviewResource(saved?.filesPreview ?? null)
     browserTabSeqRef.current = saved ? browserTabSeqFromTabs(saved.browserTabs) : 0
+    localFileTabSeqRef.current = saved ? localFileTabSeqFromTabs(saved.resourceTabs) : 0
   }, [threadId, workPanelFolder])
 
   useEffect(() => {
@@ -2676,12 +2691,22 @@ export const ChatView = memo(function ChatView() {
       tabOrder: rightPanelTabOrder,
       web: webPanelResource,
       browserTabs: extraBrowserTabs,
+      resourceTabs: rightPanelTabs
+        .filter((tab): tab is Extract<RightPanelStoredTab, { kind: 'resource' }> & { resource: Exclude<ResourceRef, BrowserResourceRef> } => (
+          tab.kind === 'resource' && tab.resource.kind !== 'browser'
+        ))
+        .map((tab) => ({
+          id: tab.id,
+          title: tab.title,
+          resource: tab.resource,
+        })),
       filesPreview: filesPreviewResource,
     }, { workFolder: workPanelFolder })
   }, [
     effectiveRightPanelTabId,
     extraBrowserTabs,
     filesPreviewResource,
+    rightPanelTabs,
     rightPanelTabOrder,
     rightPanelVisible,
     threadId,

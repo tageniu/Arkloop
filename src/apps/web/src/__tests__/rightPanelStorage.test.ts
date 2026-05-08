@@ -50,6 +50,7 @@ describe('thread right panel storage', () => {
           },
         },
       ],
+      resourceTabs: [],
       filesPreview: null,
     })
     writeThreadRightPanelState('thread-b', {
@@ -58,6 +59,7 @@ describe('thread right panel storage', () => {
       tabOrder: [],
       web: null,
       browserTabs: [],
+      resourceTabs: [],
       filesPreview: null,
     })
 
@@ -74,6 +76,7 @@ describe('thread right panel storage', () => {
       tabOrder: ['files'],
       web: null,
       browserTabs: [],
+      resourceTabs: [],
       filesPreview: {
         kind: 'local-file',
         rootPath: '/Users/dev/project-a',
@@ -84,5 +87,46 @@ describe('thread right panel storage', () => {
 
     expect(readThreadRightPanelState('thread-a', { workFolder: '/Users/dev/project-a' })?.filesPreview?.path).toBe('report.html')
     expect(readThreadRightPanelState('thread-a', { workFolder: '/Users/dev/project-b' })?.filesPreview).toBeNull()
+  })
+
+  it('恢复 pinned local file tabs 和当前选择', () => {
+    writeThreadRightPanelState('thread-a', {
+      visible: true,
+      activeTabId: 'local-file:2',
+      tabOrder: ['web', 'local-file:1', 'local-file:2'],
+      web: null,
+      browserTabs: [],
+      resourceTabs: [
+        {
+          id: 'local-file:1',
+          title: 'bench.py',
+          resource: {
+            kind: 'local-file',
+            rootPath: '/Users/dev/project-a',
+            path: 'bench.py',
+            filename: 'bench.py',
+          },
+        },
+        {
+          id: 'local-file:2',
+          title: 'report.html',
+          resource: {
+            kind: 'local-file',
+            rootPath: '/Users/dev/project-a',
+            path: 'report.html',
+            filename: 'report.html',
+          },
+        },
+      ],
+      filesPreview: null,
+    }, { workFolder: '/Users/dev/project-a' })
+
+    const restored = readThreadRightPanelState('thread-a', { workFolder: '/Users/dev/project-a' })
+    expect(restored?.activeTabId).toBe('local-file:2')
+    expect(restored?.tabOrder).toEqual(['web', 'local-file:1', 'local-file:2'])
+    expect(restored?.resourceTabs.map((tab) => tab.id)).toEqual(['local-file:1', 'local-file:2'])
+    expect(restored?.resourceTabs[1]?.resource.kind).toBe('local-file')
+    const secondResource = restored?.resourceTabs[1]?.resource
+    expect(secondResource?.kind === 'local-file' ? secondResource.path : null).toBe('report.html')
   })
 })

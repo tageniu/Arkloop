@@ -6,7 +6,7 @@ import type { UploadedThreadAttachment } from './api'
 import type { FontFamily, CodeFontFamily, FontSize, ThemePreset, ThemeDefinition, ThemeBackgroundImage } from './themes/types'
 import type { AssistantTurnSegment, AssistantTurnUi, CopBlockItem, TurnToolCallRef } from './assistantTurnSegments'
 import type { AgentUIEvent } from './agent-ui/contract'
-import type { BrowserResourceRef, LocalFileResourceRef } from './components/resource-preview/types'
+import type { ArtifactResourceRef, BrowserResourceRef, LocalFileResourceRef, ResourceRef, WorkspaceFileResourceRef } from './components/resource-preview/types'
 import { browserFaviconUrl, browserTitleFromUrl, normalizeBrowserUrl } from './components/resource-preview/browserIdentity'
 import {
   normalizeAgentEventData,
@@ -1890,12 +1890,19 @@ export type ThreadRightPanelBrowserTab = {
   resource: BrowserResourceRef | null
 }
 
+export type ThreadRightPanelResourceTab = {
+  id: string
+  title: string
+  resource: Exclude<ResourceRef, BrowserResourceRef>
+}
+
 export type ThreadRightPanelState = {
   visible: boolean
   activeTabId: string | null
   tabOrder: string[]
   web: BrowserResourceRef | null
   browserTabs: ThreadRightPanelBrowserTab[]
+  resourceTabs: ThreadRightPanelResourceTab[]
   filesPreview: LocalFileResourceRef | null
 }
 
@@ -1950,6 +1957,51 @@ function sanitizeLocalFileResource(value: unknown, workFolder?: string | null): 
   }
 }
 
+function sanitizeArtifactResource(value: unknown): ArtifactResourceRef | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (record.kind !== 'artifact') return null
+  const key = sanitizeOptionalString(record.key)
+  if (!key) return null
+  return {
+    kind: 'artifact',
+    source: 'artifact',
+    key,
+    filename: sanitizeOptionalString(record.filename),
+    mimeType: sanitizeOptionalString(record.mimeType),
+    size: Number.isFinite(record.size) ? Number(record.size) : undefined,
+    title: sanitizeOptionalString(record.title),
+  }
+}
+
+function sanitizeWorkspaceFileResource(value: unknown): WorkspaceFileResourceRef | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (record.kind !== 'workspace-file') return null
+  const path = sanitizeOptionalString(record.path)
+  if (!path) return null
+  return {
+    kind: 'workspace-file',
+    source: 'workspace-file',
+    path,
+    name: sanitizeOptionalString(record.name),
+    filename: sanitizeOptionalString(record.filename),
+    mimeType: sanitizeOptionalString(record.mimeType),
+    size: Number.isFinite(record.size) ? Number(record.size) : undefined,
+    runId: sanitizeOptionalString(record.runId),
+    projectId: sanitizeOptionalString(record.projectId),
+  }
+}
+
+function sanitizePersistentResource(value: unknown, workFolder?: string | null): Exclude<ResourceRef, BrowserResourceRef> | null {
+  if (!value || typeof value !== 'object') return null
+  const kind = (value as Record<string, unknown>).kind
+  if (kind === 'local-file') return sanitizeLocalFileResource(value, workFolder)
+  if (kind === 'artifact') return sanitizeArtifactResource(value)
+  if (kind === 'workspace-file') return sanitizeWorkspaceFileResource(value)
+  return null
+}
+
 function sanitizeRightPanelState(value: unknown, options?: { workFolder?: string | null }): ThreadRightPanelState | null {
   if (!value || typeof value !== 'object') return null
   const record = value as Record<string, unknown>
@@ -1967,6 +2019,19 @@ function sanitizeRightPanelState(value: unknown, options?: { workFolder?: string
         })
         .filter((item): item is ThreadRightPanelBrowserTab => !!item)
     : []
+  const resourceTabs = Array.isArray(record.resourceTabs)
+    ? record.resourceTabs
+        .map((item): ThreadRightPanelResourceTab | null => {
+          if (!item || typeof item !== 'object') return null
+          const tab = item as Record<string, unknown>
+          const id = sanitizeOptionalString(tab.id)
+          const title = sanitizeOptionalString(tab.title)
+          const resource = sanitizePersistentResource(tab.resource, options?.workFolder)
+          if (!id || !title || !resource) return null
+          return { id, title, resource }
+        })
+        .filter((item): item is ThreadRightPanelResourceTab => !!item)
+    : []
 
   return {
     visible: record.visible === true,
@@ -1974,6 +2039,7 @@ function sanitizeRightPanelState(value: unknown, options?: { workFolder?: string
     tabOrder: Array.from(new Set(tabOrder)),
     web: sanitizeBrowserResource(record.web),
     browserTabs,
+    resourceTabs,
     filesPreview: sanitizeLocalFileResource(record.filesPreview, options?.workFolder),
   }
 }
