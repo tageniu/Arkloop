@@ -20,7 +20,7 @@ import { useLocale } from '../../contexts/LocaleContext'
 import { localizeTimelineLabel } from './labels'
 import type { Locale } from '../../locales'
 
-const EXPLORE_BOTTOM_PAD = 12
+const EXPLORE_BOTTOM_PAD = 0
 
 export function CopTimelineSegment({
   segment,
