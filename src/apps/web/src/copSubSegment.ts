@@ -156,7 +156,9 @@ export function segmentCompletedTitle(seg: CopSubSegment): string {
       const filePath = (editCall?.arguments?.file_path as string | undefined) ?? ''
       const action = normalizeToolName(editCall?.toolName ?? '') === 'write_file' ? 'Wrote' : 'Edited'
       const subject = editCall ? planDisplayNameFromArgs(editCall.arguments ?? {}) : null
-      return subject || filePath ? `${action} ${subject ?? basename(filePath)}` : `${action} file`
+      const diff = calls[0] ? extractCallDiff(calls[0]) : null
+      const diffSuffix = diff ? ` +${diff.added} -${diff.removed}` : ''
+      return subject || filePath ? `${action} ${subject ?? basename(filePath)}${diffSuffix}` : `${action} file${diffSuffix}`
     }
     case 'agent': {
       const n = calls.length
@@ -189,6 +191,8 @@ export type AggregatedCallStats = {
   globCount: number
   writePaths: string[]
   editPaths: string[]
+  writePathDiff: Map<string, { added: number; removed: number }>
+  editPathDiff: Map<string, { added: number; removed: number }>
   execCount: number
   agentCount: number
   fetchCount: number
@@ -212,6 +216,25 @@ function getReadPath(c: CallItem['call']): string {
   return c.toolCallId
 }
 
+function extractCallDiff(call: CallItem['call']): { added: number; removed: number } | null {
+  const result = call.result
+  if (!result || typeof result !== 'object') return null
+  const r = result as Record<string, unknown>
+  const text = typeof r.diff === 'string' ? r.diff
+    : typeof r.patch === 'string' ? r.patch
+    : typeof r.unified_diff === 'string' ? r.unified_diff
+    : ''
+  if (!text) return null
+  let added = 0
+  let removed = 0
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (line.startsWith('+++') || line.startsWith('---')) continue
+    if (line.startsWith('+')) added += 1
+    else if (line.startsWith('-')) removed += 1
+  }
+  return added > 0 || removed > 0 ? { added, removed } : null
+}
+
 function getEditPath(c: CallItem['call']): string {
   const planName = planDisplayNameFromArgs(c.arguments ?? {})
   if (planName) return planName
@@ -226,6 +249,8 @@ export function aggregateCallStats(calls: ReadonlyArray<CallItem['call']>): Aggr
     globCount: 0,
     writePaths: [],
     editPaths: [],
+    writePathDiff: new Map(),
+    editPathDiff: new Map(),
     execCount: 0,
     agentCount: 0,
     fetchCount: 0,
@@ -264,8 +289,14 @@ export function aggregateCallStats(calls: ReadonlyArray<CallItem['call']>): Aggr
     if (cat === 'edit') {
       const fp = getEditPath(c)
       const target = fp ? basename(fp) : c.toolCallId
-      if (n === 'write_file') stats.writePaths.push(target)
-      else stats.editPaths.push(target)
+      const diff = extractCallDiff(c)
+      if (n === 'write_file') {
+        stats.writePaths.push(target)
+        if (diff) stats.writePathDiff.set(target, diff)
+      } else {
+        stats.editPaths.push(target)
+        if (diff) stats.editPathDiff.set(target, diff)
+      }
       continue
     }
     if (cat === 'search') {
@@ -407,12 +438,18 @@ export function runningToolLabel(
   }
 }
 
+function formatDiffSuffix(path: string, diffMap: Map<string, { added: number; removed: number }>): string {
+  const d = diffMap.get(path)
+  if (!d) return ''
+  return ` +${d.added} -${d.removed}`
+}
+
 function formatStatsParts(stats: AggregatedCallStats): string {
   const onlyLoadTools = Array.from(stats.byToolName.keys()).every((toolName) => LOAD_TOOL_NAMES.has(toolName))
   const parts: string[] = []
-  if (stats.writePaths.length === 1) parts.push(`Wrote ${stats.writePaths[0]}`)
+  if (stats.writePaths.length === 1) parts.push(`Wrote ${stats.writePaths[0]}${formatDiffSuffix(stats.writePaths[0]!, stats.writePathDiff)}`)
   else if (stats.writePaths.length > 1) parts.push(`Wrote ${stats.writePaths.length} files`)
-  if (stats.editPaths.length === 1) parts.push(`Edited ${stats.editPaths[0]}`)
+  if (stats.editPaths.length === 1) parts.push(`Edited ${stats.editPaths[0]}${formatDiffSuffix(stats.editPaths[0]!, stats.editPathDiff)}`)
   else if (stats.editPaths.length > 1) parts.push(`Edited ${stats.editPaths.length} files`)
   if (stats.readPaths.size > 0) parts.push(`Read ${formatCount(stats.readPaths.size, 'file', 'files')}`)
   if (stats.searchCount > 0) parts.push(formatCount(stats.searchCount, 'search', 'searches'))
@@ -442,10 +479,10 @@ function formatSingleCategoryTitle(cat: CopSegmentCategory, stats: AggregatedCal
         return formatStatsParts(stats)
       }
       if (stats.writePaths.length > 0 && stats.editPaths.length === 0) {
-        if (stats.writePaths.length === 1) return `Wrote ${stats.writePaths[0]}`
+        if (stats.writePaths.length === 1) return `Wrote ${stats.writePaths[0]}${formatDiffSuffix(stats.writePaths[0]!, stats.writePathDiff)}`
         return `Wrote ${stats.writePaths.length} files`
       }
-      if (stats.editPaths.length === 1) return `Edited ${stats.editPaths[0]}`
+      if (stats.editPaths.length === 1) return `Edited ${stats.editPaths[0]}${formatDiffSuffix(stats.editPaths[0]!, stats.editPathDiff)}`
       if (stats.editPaths.length > 1) return `Edited ${stats.editPaths.length} files`
       return 'Edit completed'
     }
