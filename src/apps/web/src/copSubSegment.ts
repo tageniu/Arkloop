@@ -461,62 +461,49 @@ function formatSingleCategoryTitle(cat: CopSegmentCategory, stats: AggregatedCal
   }
 }
 
-/**
- * 聚合整个 COP 的主标题。
- * Live 态：取最后 open 段的最后一个 running tool 的渐进式标签，前面拼接已完成段的历史统计，
- *   例如 "Read 3 files · Searching auth flow..."——让用户同时看到进度和已完成工作。
- * Complete 态：跨段聚合所有 call，单类别输出该类别摘要，多类别输出跨类别统计。
- */
-export function aggregateMainTitle(
-  segments: ReadonlyArray<CopSubSegment>,
-  isLive: boolean,
-  isComplete: boolean,
-): string {
-  if (segments.length === 0) return ''
-
-  const collectCalls = (segs: ReadonlyArray<CopSubSegment>): CallItem['call'][] => {
-    const out: CallItem['call'][] = []
-    for (const s of segs) {
-      for (const it of s.items) {
-        if (it.kind === 'call') out.push(it.call)
-      }
+function collectCalls(segs: ReadonlyArray<CopSubSegment>): CallItem['call'][] {
+  const out: CallItem['call'][] = []
+  for (const s of segs) {
+    for (const it of s.items) {
+      if (it.kind === 'call') out.push(it.call)
     }
-    return out
   }
+  return out
+}
 
-  if (isLive && !isComplete) {
-    // 找最后一个 open（或最后一段）的最后一个 call
-    let openSeg: CopSubSegment | null = null
-    for (let i = segments.length - 1; i >= 0; i--) {
-      if (segments[i]!.status === 'open') { openSeg = segments[i]!; break }
-    }
-    if (!openSeg) openSeg = segments[segments.length - 1]!
-    let lastCall: CallItem['call'] | null = null
-    for (let i = openSeg.items.length - 1; i >= 0; i--) {
-      const it = openSeg.items[i]!
-      if (it.kind === 'call') { lastCall = it.call; break }
-    }
-    const openCalls = openSeg.items
-      .filter((it): it is CallItem => it.kind === 'call')
-      .map((it) => it.call)
-    const current = (() => {
-      if (!lastCall) return segmentLiveTitle(openSeg.category).replace(/\.\.\.$/, '')
-      if (openCalls.length > 0 && openCalls.every((call) => isLoadTool(call.toolName))) {
-        const stats = aggregateCallStats(openCalls)
-        return formatLoadToolsTitle(stats.loadToolsCount, stats.loadSkillCount, 'live')
-      }
-      if (isLoadTool(lastCall.toolName)) return segmentLiveTitle(openSeg.category).replace(/\.\.\.$/, '')
-      return runningToolLabel(lastCall.toolName, lastCall.arguments, lastCall.displayDescription)
-    })()
-    const closedSegs = segments.filter((s) => s !== openSeg && s.status === 'closed')
-    const closedCalls = collectCalls(closedSegs)
-    if (closedCalls.length === 0) return `${current}...`
-    const stats = aggregateCallStats(closedCalls)
-    const history = formatStatsParts(stats)
-    return history ? `${history} · ${current}...` : `${current}...`
+function buildLiveMainTitle(segments: ReadonlyArray<CopSubSegment>): string {
+  // 找最后一个 open（或最后一段）的最后一个 call
+  let openSeg: CopSubSegment | null = null
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (segments[i]!.status === 'open') { openSeg = segments[i]!; break }
   }
+  if (!openSeg) openSeg = segments[segments.length - 1]!
+  let lastCall: CallItem['call'] | null = null
+  for (let i = openSeg.items.length - 1; i >= 0; i--) {
+    const it = openSeg.items[i]!
+    if (it.kind === 'call') { lastCall = it.call; break }
+  }
+  const openCalls = openSeg.items
+    .filter((it): it is CallItem => it.kind === 'call')
+    .map((it) => it.call)
+  const current = (() => {
+    if (!lastCall) return segmentLiveTitle(openSeg.category).replace(/\.\.\.$/, '')
+    if (openCalls.length > 0 && openCalls.every((call) => isLoadTool(call.toolName))) {
+      const stats = aggregateCallStats(openCalls)
+      return formatLoadToolsTitle(stats.loadToolsCount, stats.loadSkillCount, 'live')
+    }
+    if (isLoadTool(lastCall.toolName)) return segmentLiveTitle(openSeg.category).replace(/\.\.\.$/, '')
+    return runningToolLabel(lastCall.toolName, lastCall.arguments, lastCall.displayDescription)
+  })()
+  const closedSegs = segments.filter((s) => s !== openSeg && s.status === 'closed')
+  const closedCalls = collectCalls(closedSegs)
+  if (closedCalls.length === 0) return `${current}...`
+  const stats = aggregateCallStats(closedCalls)
+  const history = formatStatsParts(stats)
+  return history ? `${history} · ${current}...` : `${current}...`
+}
 
-  // complete 态
+function buildCompleteMainTitle(segments: ReadonlyArray<CopSubSegment>): string {
   const allCalls = collectCalls(segments)
   if (allCalls.length === 1 && allCalls[0]!.toolName === 'exit_plan_mode') {
     return presentationForTool(allCalls[0]!.toolName, allCalls[0]!.arguments).description
@@ -533,6 +520,22 @@ export function aggregateMainTitle(
   if (cats.length === 1) return formatSingleCategoryTitle(cats[0]!, stats, allCalls.length)
   const parts = formatStatsParts(stats)
   return parts || `${formatCount(allCalls.length, 'step', 'steps')} completed`
+}
+
+/**
+ * 聚合整个 COP 的主标题。
+ * Live 态：取最后 open 段的最后一个 running tool 的渐进式标签，前面拼接已完成段的历史统计，
+ *   例如 "Read 3 files · Searching auth flow..."——让用户同时看到进度和已完成工作。
+ * Complete 态：跨段聚合所有 call，单类别输出该类别摘要，多类别输出跨类别统计。
+ */
+export function aggregateMainTitle(
+  segments: ReadonlyArray<CopSubSegment>,
+  isLive: boolean,
+  isComplete: boolean,
+): string {
+  if (segments.length === 0) return ''
+  if (isLive && !isComplete) return buildLiveMainTitle(segments)
+  return buildCompleteMainTitle(segments)
 }
 
 /**

@@ -357,62 +357,37 @@ export function foldAssistantTurnEvent(state: AssistantTurnFoldState, event: Ass
     closeThinkingBeforeLastCall(targetCop.items, eventTs)
   }
 
-  if (event.type === 'run.segment.start') {
-    flushCop(eventTs)
-    state.thinkingMustBreakBeforeNext = false
+  const handleThinkingChannel = (delta: string, eventSeq: number, eventTs: number) => {
+    const forceNew = state.thinkingMustBreakBeforeNext
+    if (forceNew) {
+      state.thinkingMustBreakBeforeNext = false
+    }
+    if (currentCop != null && copHasExecutionCall(currentCop)) {
+      flushCop(eventTs)
+    }
+    if (currentCop == null && forceNew && appendThinkingToPreviousToolCop(segments, delta, eventSeq, eventTs)) {
+      state.currentCop = currentCop
+      return
+    }
+    ensureCop()
+    const items = currentCop!.items
+    const last = items[items.length - 1]
+    if (!forceNew && last?.kind === 'thinking') {
+      last.content += delta
+      if (last.startedAtMs == null) last.startedAtMs = eventTs
+    } else {
+      items.push({ kind: 'thinking', content: delta, seq: eventSeq, startedAtMs: eventTs })
+    }
     state.currentCop = currentCop
-    return
   }
 
-  if (event.type === 'run.segment.end') {
-    flushCop(eventTs)
-    state.thinkingMustBreakBeforeNext = false
-    state.currentCop = currentCop
-    return
-  }
-
-  if (event.type === 'message.delta') {
-    const obj = event.data as { content_delta?: unknown; role?: unknown; channel?: unknown }
-    if (obj.role != null && obj.role !== 'assistant') {
-      state.currentCop = currentCop
-      return
-    }
-    const delta = obj.content_delta
-    if (typeof delta !== 'string' || delta === '') {
-      state.currentCop = currentCop
-      return
-    }
-    if (obj.channel === 'thinking') {
-      const forceNew = state.thinkingMustBreakBeforeNext
-      if (forceNew) {
-        state.thinkingMustBreakBeforeNext = false
-      }
-      if (currentCop != null && copHasExecutionCall(currentCop)) {
-        flushCop(eventTs)
-      }
-      if (currentCop == null && forceNew && appendThinkingToPreviousToolCop(segments, delta, event.seq, eventTs)) {
-        state.currentCop = currentCop
-        return
-      }
-      ensureCop()
-      const items = currentCop!.items
-      const last = items[items.length - 1]
-      if (!forceNew && last?.kind === 'thinking') {
-        last.content += delta
-        if (last.startedAtMs == null) last.startedAtMs = eventTs
-      } else {
-        items.push({ kind: 'thinking', content: delta, seq: event.seq, startedAtMs: eventTs })
-      }
-      state.currentCop = currentCop
-      return
-    }
-
+  const handleAssistantTextChannel = (delta: string, eventSeq: number, eventTs: number) => {
     const hasCallsInOpenCop = currentCop != null && currentCop.items.some((i) => i.kind === 'call')
     const previousToolCopHasTrailingThinking = currentCop == null && lastCopSegmentHasCalls(segments)
 
     if (delta.trim() === '') {
       if (previousToolCopHasTrailingThinking) {
-        appendThinkingToPreviousToolCop(segments, delta, event.seq, eventTs)
+        appendThinkingToPreviousToolCop(segments, delta, eventSeq, eventTs)
         state.currentCop = currentCop
         return
       }
@@ -440,10 +415,9 @@ export function foldAssistantTurnEvent(state: AssistantTurnFoldState, event: Ass
 
     appendAssistantDelta(delta)
     state.currentCop = currentCop
-    return
   }
 
-  if (event.type === 'tool.call') {
+  const handleToolCall = (event: AssistantTurnEvent) => {
     const toolName = pickToolName(event.data)
     if (toolName === TIMELINE_TITLE_TOOL) {
       if (currentCop != null && copHasExecutionCall(currentCop)) {
@@ -478,10 +452,9 @@ export function foldAssistantTurnEvent(state: AssistantTurnFoldState, event: Ass
     closeThinkingBeforeLastCall(currentCop!.items, eventTs)
     state.thinkingMustBreakBeforeNext = true
     state.currentCop = currentCop
-    return
   }
 
-  if (event.type === 'tool.result') {
+  const handleToolResult = (event: AssistantTurnEvent) => {
     const toolName = pickToolName(event.data)
     if (toolName === TIMELINE_TITLE_TOOL) return
     if (shouldHideCopTool(toolName)) return
@@ -494,6 +467,50 @@ export function foldAssistantTurnEvent(state: AssistantTurnFoldState, event: Ass
       state.thinkingMustBreakBeforeNext = true
     }
     state.currentCop = currentCop
+  }
+
+  if (event.type === 'run.segment.start') {
+    flushCop(eventTs)
+    state.thinkingMustBreakBeforeNext = false
+    state.currentCop = currentCop
+    return
+  }
+
+  if (event.type === 'run.segment.end') {
+    flushCop(eventTs)
+    state.thinkingMustBreakBeforeNext = false
+    state.currentCop = currentCop
+    return
+  }
+
+  if (event.type === 'message.delta') {
+    const obj = event.data as { content_delta?: unknown; role?: unknown; channel?: unknown }
+    if (obj.role != null && obj.role !== 'assistant') {
+      state.currentCop = currentCop
+      return
+    }
+    const delta = obj.content_delta
+    if (typeof delta !== 'string' || delta === '') {
+      state.currentCop = currentCop
+      return
+    }
+    if (obj.channel === 'thinking') {
+      handleThinkingChannel(delta, event.seq, eventTs)
+      return
+    }
+
+    handleAssistantTextChannel(delta, event.seq, eventTs)
+    return
+  }
+
+  if (event.type === 'tool.call') {
+    handleToolCall(event)
+    return
+  }
+
+  if (event.type === 'tool.result') {
+    handleToolResult(event)
+    return
   }
 }
 

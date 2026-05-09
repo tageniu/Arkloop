@@ -313,6 +313,11 @@ function markerForItem(item: CopSubSegment['items'][number], pool: ResolvedPool)
   return markerForToolName(item.call.toolName)
 }
 
+type ItemResolver = {
+  check: (toolCallId: string) => boolean
+  render: (toolCallId: string) => React.ReactNode
+}
+
 function renderItem(
   item: CopSubSegment['items'][number],
   pool: ResolvedPool,
@@ -346,55 +351,75 @@ function renderItem(
   const call = item.call
   const toolCallId = call.toolCallId
 
-  // Check each pool
-  const codeExec = pool.codeExecutions.get(toolCallId)
-  if (codeExec) {
-    return codeExec.language === 'shell'
-      ? <ExecutionCard variant="shell" displayDescription={codeExec.displayDescription} code={codeExec.code} output={codeExec.output} status={codeExec.status} errorMessage={codeExec.errorMessage} smooth={live && codeExec.status === 'running'} />
-      : <CodeExecutionCard language={codeExec.language} code={codeExec.code} output={codeExec.output} errorMessage={codeExec.errorMessage} status={codeExec.status} onOpen={onOpenCodeExecution ? () => onOpenCodeExecution(codeExec) : undefined} isActive={activeCodeExecutionId === codeExec.id} />
-  }
-
-  const fileOp = pool.fileOps.get(toolCallId)
-  if (fileOp) {
-    const isEdit = normalizeToolName(fileOp.toolName) === 'edit' ||
-      normalizeToolName(fileOp.toolName) === 'edit_file' ||
-      normalizeToolName(fileOp.toolName) === 'write_file'
-    if (isEdit) {
-      return <FileOpToolCard op={fileOp} />
-    }
-    return <FileOpToolRow op={fileOp} live={live} />
-  }
-
-  const subAgent = pool.subAgents.get(toolCallId)
-  if (subAgent) {
-    return <SubAgentBlock nickname={subAgent.nickname} personaId={subAgent.personaId} input={subAgent.input} output={subAgent.output} status={subAgent.status} error={subAgent.error} live={live} currentRunId={subAgent.currentRunId} accessToken={accessToken} baseUrl={baseUrl} onOpenPanel={onOpenSubAgent ? () => onOpenSubAgent(subAgent) : undefined} typography={typography} />
-  }
-
-  const fetch = pool.webFetches.get(toolCallId)
-  if (fetch) {
-    return <WebFetchItem fetch={fetch} live={live} />
-  }
-
-  const gen = pool.genericTools.get(toolCallId)
-  if (gen) {
-    return <ExecutionCard variant="fileop" toolName={gen.toolName} label={gen.label} displayDescription={gen.displayDescription} output={gen.output} status={gen.status} errorMessage={gen.errorMessage} smooth={live && gen.status === 'running'} />
-  }
-
-  const step = pool.steps.get(toolCallId)
-  if (step) {
-    return (
-      <div>
-        <div style={{ fontSize: 'var(--c-cop-row-font-size)', color: 'var(--c-cop-row-fg)', lineHeight: 'var(--c-cop-row-line-height)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <TypewriterText text={localizeTimelineLabel(timelineStepDisplayLabel(step), locale)} className={step.status === 'active' ? 'thinking-shimmer-dim' : undefined} live={live} />
-        </div>
-        {step.kind === 'searching' && step.queries && step.queries.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
-            {step.queries.map((q, index) => <QueryPill key={`${step.id}:query:${index}`} text={q} live={live} />)}
+  const resolvers: ItemResolver[] = [
+    {
+      check: (id) => pool.codeExecutions.has(id),
+      render: (id) => {
+        const codeExec = pool.codeExecutions.get(id)!
+        return codeExec.language === 'shell'
+          ? <ExecutionCard variant="shell" displayDescription={codeExec.displayDescription} code={codeExec.code} output={codeExec.output} status={codeExec.status} errorMessage={codeExec.errorMessage} smooth={live && codeExec.status === 'running'} />
+          : <CodeExecutionCard language={codeExec.language} code={codeExec.code} output={codeExec.output} errorMessage={codeExec.errorMessage} status={codeExec.status} onOpen={onOpenCodeExecution ? () => onOpenCodeExecution(codeExec) : undefined} isActive={activeCodeExecutionId === codeExec.id} />
+      },
+    },
+    {
+      check: (id) => pool.fileOps.has(id),
+      render: (id) => {
+        const fileOp = pool.fileOps.get(id)!
+        const isEdit = normalizeToolName(fileOp.toolName) === 'edit' ||
+          normalizeToolName(fileOp.toolName) === 'edit_file' ||
+          normalizeToolName(fileOp.toolName) === 'write_file'
+        if (isEdit) {
+          return <FileOpToolCard op={fileOp} />
+        }
+        return <FileOpToolRow op={fileOp} live={live} />
+      },
+    },
+    {
+      check: (id) => pool.subAgents.has(id),
+      render: (id) => {
+        const subAgent = pool.subAgents.get(id)!
+        return <SubAgentBlock nickname={subAgent.nickname} personaId={subAgent.personaId} input={subAgent.input} output={subAgent.output} status={subAgent.status} error={subAgent.error} live={live} currentRunId={subAgent.currentRunId} accessToken={accessToken} baseUrl={baseUrl} onOpenPanel={onOpenSubAgent ? () => onOpenSubAgent(subAgent) : undefined} typography={typography} />
+      },
+    },
+    {
+      check: (id) => pool.webFetches.has(id),
+      render: (id) => {
+        const fetch = pool.webFetches.get(id)!
+        return <WebFetchItem fetch={fetch} live={live} />
+      },
+    },
+    {
+      check: (id) => pool.genericTools.has(id),
+      render: (id) => {
+        const gen = pool.genericTools.get(id)!
+        return <ExecutionCard variant="fileop" toolName={gen.toolName} label={gen.label} displayDescription={gen.displayDescription} output={gen.output} status={gen.status} errorMessage={gen.errorMessage} smooth={live && gen.status === 'running'} />
+      },
+    },
+    {
+      check: (id) => pool.steps.has(id),
+      render: (id) => {
+        const step = pool.steps.get(id)!
+        return (
+          <div>
+            <div style={{ fontSize: 'var(--c-cop-row-font-size)', color: 'var(--c-cop-row-fg)', lineHeight: 'var(--c-cop-row-line-height)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <TypewriterText text={localizeTimelineLabel(timelineStepDisplayLabel(step), locale)} className={step.status === 'active' ? 'thinking-shimmer-dim' : undefined} live={live} />
+            </div>
+            {step.kind === 'searching' && step.queries && step.queries.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '6px' }}>
+                {step.queries.map((q, index) => <QueryPill key={`${step.id}:query:${index}`} text={q} live={live} />)}
+              </div>
+            )}
+            {step.kind === 'reviewing' && <SourceListCard sources={step.sources ?? pool.sources} />}
           </div>
-        )}
-        {step.kind === 'reviewing' && <SourceListCard sources={step.sources ?? pool.sources} />}
-      </div>
-    )
+        )
+      },
+    },
+  ]
+
+  for (const resolver of resolvers) {
+    if (resolver.check(toolCallId)) {
+      return resolver.render(toolCallId)
+    }
   }
 
   // Fallback: render tool name + status
