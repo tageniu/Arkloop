@@ -464,15 +464,9 @@ export function runningToolLabel(
 function formatDiffSpans(path: string, diffMap: Map<string, { added: number; removed: number }>): TitleSpan[] {
   const d = diffMap.get(path)
   if (!d) return []
-  const nums: TitleSpan[] = []
-  if (d.added > 0) nums.push({ text: `+${d.added}`, diffKind: 'added' })
-  if (d.removed > 0) nums.push({ text: `-${d.removed}`, diffKind: 'removed' })
-  if (nums.length === 0) return []
-  const spans: TitleSpan[] = [{ text: ' ' }]
-  for (let i = 0; i < nums.length; i++) {
-    if (i > 0) spans.push({ text: ' ' })
-    spans.push(nums[i]!)
-  }
+  const spans: TitleSpan[] = []
+  if (d.added > 0) spans.push({ text: ` +${d.added}`, diffKind: 'added' })
+  if (d.removed > 0) spans.push({ text: ` -${d.removed}`, diffKind: 'removed' })
   return spans
 }
 
