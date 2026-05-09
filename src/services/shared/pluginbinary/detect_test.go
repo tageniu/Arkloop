@@ -35,6 +35,27 @@ func TestDetectRuntimeVersionInsufficient(t *testing.T) {
 	}
 }
 
+func TestDetectRuntimeDerivesHelperAppPath(t *testing.T) {
+	root := t.TempDir()
+	binaryPath := filepath.Join(root, "runtime", "CuaDriver.app", "Contents", "MacOS", "cua-driver")
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(binaryPath, []byte("x"), 0o755); err != nil {
+		t.Fatalf("write binary marker: %v", err)
+	}
+	result := DetectRuntime(context.Background(), pluginmanifest.RuntimeConfig{
+		ID:     "cua-driver",
+		Detect: []pluginmanifest.RuntimeDetectConfig{{Path: "runtime/CuaDriver.app/Contents/MacOS/cua-driver"}},
+	}, DetectOptions{InstallRoot: root})
+	if result.Status != StatusInstalled {
+		t.Fatalf("expected installed, got %#v", result)
+	}
+	if result.HelperAppPath != filepath.Join(root, "runtime", "CuaDriver.app") {
+		t.Fatalf("unexpected helper app path: %q", result.HelperAppPath)
+	}
+}
+
 func TestVersionCommandHelper(t *testing.T) {
 	args := os.Args
 	for i, arg := range args {

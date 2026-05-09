@@ -29,10 +29,11 @@ type DetectOptions struct {
 }
 
 type DetectResult struct {
-	Status  DetectStatus
-	Path    string
-	Version string
-	Error   string
+	Status        DetectStatus
+	Path          string
+	HelperAppPath string
+	Version       string
+	Error         string
 }
 
 func DetectRuntime(ctx context.Context, runtime pluginmanifest.RuntimeConfig, opts DetectOptions) DetectResult {
@@ -54,11 +55,12 @@ func detectRuntimePath(ctx context.Context, runtimeID string, detect pluginmanif
 		return DetectResult{Status: StatusError, Error: err.Error()}
 	}
 	resolvedPath = resolveInstallPath(opts.InstallRoot, resolvedPath)
+	helperAppPath := detectHelperAppPath(resolvedPath)
 	if _, err := os.Stat(resolvedPath); err != nil {
 		if os.IsNotExist(err) {
-			return DetectResult{Status: StatusMissing, Path: resolvedPath}
+			return DetectResult{Status: StatusMissing, Path: resolvedPath, HelperAppPath: helperAppPath}
 		}
-		return DetectResult{Status: StatusError, Path: resolvedPath, Error: err.Error()}
+		return DetectResult{Status: StatusError, Path: resolvedPath, HelperAppPath: helperAppPath, Error: err.Error()}
 	}
 	version := ""
 	if len(detect.VersionCommand) > 0 {
@@ -73,14 +75,14 @@ func detectRuntimePath(ctx context.Context, runtimeID string, detect pluginmanif
 		}
 		version, err = runVersionCommand(ctx, args)
 		if err != nil {
-			return DetectResult{Status: StatusError, Path: resolvedPath, Error: err.Error()}
+			return DetectResult{Status: StatusError, Path: resolvedPath, HelperAppPath: helperAppPath, Error: err.Error()}
 		}
 	}
 	if detect.VersionMin != "" && compareVersion(version, detect.VersionMin) < 0 {
-		return DetectResult{Status: StatusOutdated, Path: resolvedPath, Version: version}
+		return DetectResult{Status: StatusOutdated, Path: resolvedPath, HelperAppPath: helperAppPath, Version: version}
 	}
 	_ = runtimeID
-	return DetectResult{Status: StatusInstalled, Path: resolvedPath, Version: version}
+	return DetectResult{Status: StatusInstalled, Path: resolvedPath, HelperAppPath: helperAppPath, Version: version}
 }
 
 func runVersionCommand(ctx context.Context, args []string) (string, error) {
@@ -109,6 +111,16 @@ func resolveInstallPath(root, path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Join(root, path)
+}
+
+func detectHelperAppPath(executablePath string) string {
+	slashPath := filepath.ToSlash(strings.TrimSpace(executablePath))
+	marker := ".app/Contents/MacOS/"
+	index := strings.Index(slashPath, marker)
+	if index < 0 {
+		return ""
+	}
+	return filepath.FromSlash(slashPath[:index+len(".app")])
 }
 
 var versionPattern = regexp.MustCompile(`\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?`)

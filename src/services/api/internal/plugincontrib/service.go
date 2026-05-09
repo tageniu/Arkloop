@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"arkloop/services/api/internal/data"
@@ -405,6 +406,17 @@ func (e *Enabler) RuntimeStatus(ctx context.Context, accountID, userID uuid.UUID
 	return e.runtimeRepo.Get(ctx, accountID, pkg.ID, resolvedProfileRef, resolvedWorkspaceRef)
 }
 
+func (e *Enabler) GetEnablement(ctx context.Context, req EnableRequest) (*data.PluginEnablement, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	pkg, _, profileRef, workspaceRef, err := e.resolveScope(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return e.enablementsRepo.Get(ctx, req.AccountID, pkg.ID, profileRef, workspaceRef)
+}
+
 func (e *Enabler) apply(ctx context.Context, req EnableRequest, toggle bool) (data.PluginEnablement, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -791,9 +803,12 @@ func renderValue(value any, settings map[string]any, runtimeState map[string]any
 
 func renderSettingString(value string, settings map[string]any, runtimeState map[string]any, strictPlaceholders bool) (string, error) {
 	resolved, err := sharedpluginmanifest.ResolveString(value, sharedpluginmanifest.PlaceholderContext{
-		Settings:     stringSettings(settings),
-		RuntimePaths: runtimePathSettings(runtimeState),
-		PluginData:   stringFromPluginMap(runtimeState, "plugin_data"),
+		Settings:          stringSettings(settings),
+		RuntimePaths:      runtimePathSettings(runtimeState),
+		RuntimeProperties: runtimePropertySettings(runtimeState),
+		PluginData:        stringFromPluginMap(runtimeState, "plugin_data"),
+		Platform:          runtime.GOOS,
+		Arch:              normalizedArch(),
 	})
 	if err == nil {
 		return resolved, nil
@@ -951,6 +966,33 @@ func runtimePathSettings(runtimeState map[string]any) map[string]string {
 				out[runtimeID] = fmt.Sprint(value)
 			}
 		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func runtimePropertySettings(runtimeState map[string]any) map[string]map[string]string {
+	if len(runtimeState) == 0 {
+		return nil
+	}
+	out := make(map[string]map[string]string)
+	for key, value := range runtimeState {
+		key = strings.TrimSpace(key)
+		index := strings.LastIndex(key, ".")
+		if index <= 0 || index == len(key)-1 {
+			continue
+		}
+		runtimeID := key[:index]
+		field := key[index+1:]
+		if runtimeID == "" || field == "" {
+			continue
+		}
+		if out[runtimeID] == nil {
+			out[runtimeID] = map[string]string{}
+		}
+		out[runtimeID][field] = fmt.Sprint(value)
 	}
 	if len(out) == 0 {
 		return nil

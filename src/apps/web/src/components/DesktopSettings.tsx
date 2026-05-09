@@ -19,6 +19,7 @@ import {
   Loader2,
   Shield,
   Info,
+  Blocks,
 } from "lucide-react";
 import { getDesktopApi } from "@arkloop/shared/desktop";
 import type { MeResponse } from "../api";
@@ -41,6 +42,7 @@ import { NotebookSettings } from "./settings/NotebookSettings";
 import { ConnectionSettings } from "./settings/ConnectionSettings";
 import { ChatSettings } from "./settings/ChatSettings";
 import { ExtensionsSettings } from "./settings/ExtensionsSettings";
+import { PluginsSettings } from "./settings/PluginsSettings";
 import { ModulesSettings } from "./settings/ModulesSettings";
 import { DeveloperSettings } from "./settings/DeveloperSettings";
 import { DesktopPromptInjectionSettings } from "./settings/DesktopPromptInjectionSettings";
@@ -55,6 +57,7 @@ export type DesktopSettingsKey =
   | "providers"
   | "routing"
   | "channels"
+  | "plugins"
   | "skills"
   | "mcp"
   | "tools"
@@ -83,6 +86,7 @@ const NAV_ENTRIES: NavEntry[] = [
   { key: "appearance", icon: Palette },
   { key: "providers",  icon: Cpu },
   { key: "channels",   icon: Radio },
+  { key: "plugins",    icon: Blocks },
   // 第二段：agent 核心组件（英文专有名词区）
   { header: "agentCoreHeader" },
   { key: "skills",           icon: Puzzle },
@@ -430,6 +434,8 @@ export function DesktopSettings({
         return <RoutingSettings accessToken={accessToken} />;
       case "channels":
         return <DesktopChannelsSettings accessToken={accessToken} />;
+      case "plugins":
+        return <PluginsSettings accessToken={accessToken} />;
       case "skills":
         return (
           <SkillsSettings accessToken={accessToken} onTrySkill={onTrySkill} />

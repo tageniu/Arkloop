@@ -97,6 +97,37 @@ func TestRenderLaunchSpecResolvesRuntimePath(t *testing.T) {
 	}
 }
 
+func TestRenderLaunchSpecResolvesRuntimeCommandHelperAndPlatform(t *testing.T) {
+	spec := map[string]any{
+		"command": "${runtime.cua-driver.command}",
+		"env": map[string]any{
+			"ARKLOOP_CUA_HELPER_APP_PATH": "${runtime.cua-driver.helper_app_path}",
+			"ARKLOOP_CUA_PLATFORM":        "${platform}-${arch}",
+		},
+	}
+	payload, err := renderLaunchSpec(spec, nil, map[string]any{
+		"cua-driver.path":            "/tmp/CuaDriver.app/Contents/MacOS/cua-driver",
+		"cua-driver.helper_app_path": "/tmp/CuaDriver.app",
+	}, true)
+	if err != nil {
+		t.Fatalf("render launch spec: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode launch spec: %v", err)
+	}
+	if decoded["command"] != "/tmp/CuaDriver.app/Contents/MacOS/cua-driver" {
+		t.Fatalf("unexpected command: %#v", decoded)
+	}
+	env := decoded["env"].(map[string]any)
+	if env["ARKLOOP_CUA_HELPER_APP_PATH"] != "/tmp/CuaDriver.app" {
+		t.Fatalf("unexpected helper env: %#v", env)
+	}
+	if !strings.Contains(env["ARKLOOP_CUA_PLATFORM"].(string), "-") {
+		t.Fatalf("unexpected platform env: %#v", env)
+	}
+}
+
 func TestRenderLaunchSpecRejectsMissingRuntimePathWhenStrict(t *testing.T) {
 	_, err := renderLaunchSpec(map[string]any{
 		"command": "${runtime.cua-driver.path}",

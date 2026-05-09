@@ -19,6 +19,7 @@ export type { RunEvent } from './sse'
 import {
   apiFetch,
   ApiError,
+  isApiError,
   TRACE_ID_HEADER,
   buildUrl,
   apiBaseUrl,
@@ -2348,6 +2349,89 @@ export async function setExternalDirs(accessToken: string, dirs: string[]): Prom
     '/v1/admin/platform-settings/skills.external_dirs',
     { method: 'PUT', accessToken, body: JSON.stringify({ value: JSON.stringify(dirs) }) },
   )
+}
+
+export type PluginPackage = {
+  id: string
+  package_id: string
+  version: string
+  display_name: string
+  description?: string
+  manifest: Record<string, unknown>
+  source_kind: string
+  source_uri?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type PluginEnablement = {
+  id: string
+  account_id: string
+  package_id: string
+  plugin_id: string
+  plugin_version: string
+  profile_ref: string
+  workspace_ref: string
+  enabled: boolean
+  enabled_by_user_id: string
+  settings: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export type PluginRuntimeState = {
+  account_id?: string
+  package_id?: string
+  plugin_id?: string
+  plugin_version?: string
+  profile_ref?: string
+  workspace_ref?: string
+  status: 'installed' | 'not_installed' | 'partial' | 'error' | string
+  status_json?: Record<string, unknown>
+  updated_at?: string
+}
+
+export async function listPlugins(accessToken: string): Promise<PluginPackage[]> {
+  const response = await apiFetch<{ items: PluginPackage[] }>('/v1/plugins', { accessToken })
+  return response.items ?? []
+}
+
+export async function getPluginEnablement(accessToken: string, pluginID: string): Promise<PluginEnablement | null> {
+  try {
+    return await apiFetch<PluginEnablement>(`/v1/plugins/${encodeURIComponent(pluginID)}/enablements`, {
+      accessToken,
+    })
+  } catch (error) {
+    if (isApiError(error) && error.status === 404) return null
+    throw error
+  }
+}
+
+export async function setPluginEnabled(
+  accessToken: string,
+  pluginID: string,
+  enabled: boolean,
+): Promise<PluginEnablement> {
+  return apiFetch<PluginEnablement>(`/v1/plugins/${encodeURIComponent(pluginID)}/enablements`, {
+    method: 'PUT',
+    accessToken,
+    body: JSON.stringify({ enabled }),
+  })
+}
+
+export async function getPluginRuntimeStatus(accessToken: string, pluginID: string): Promise<PluginRuntimeState> {
+  return apiFetch<PluginRuntimeState>(`/v1/plugins/${encodeURIComponent(pluginID)}/runtime/status`, {
+    accessToken,
+  })
+}
+
+export async function installPluginRuntime(accessToken: string, pluginID: string): Promise<PluginRuntimeState> {
+  return apiFetch<PluginRuntimeState>(`/v1/plugins/${encodeURIComponent(pluginID)}/runtime/install`, {
+    method: 'POST',
+    accessToken,
+    body: JSON.stringify({}),
+  })
 }
 
 export type MCPInstall = {

@@ -51,6 +51,11 @@ func (e *Enabler) InstallRuntime(ctx context.Context, req EnableRequest) (data.P
 		statusMap[runtimeConfig.ID+".status"] = string(result.Status)
 		if strings.TrimSpace(result.Path) != "" {
 			statusMap[runtimeConfig.ID+".path"] = result.Path
+			statusMap[runtimeConfig.ID+".command"] = result.Path
+		}
+		if strings.TrimSpace(result.HelperAppPath) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_path"] = result.HelperAppPath
+			statusMap[runtimeConfig.ID+".helperAppPath"] = result.HelperAppPath
 		}
 		if strings.TrimSpace(result.Version) != "" {
 			statusMap[runtimeConfig.ID+".version"] = result.Version
@@ -123,6 +128,11 @@ func (e *Enabler) detectRuntimeState(ctx context.Context, pkg data.PluginPackage
 		statusMap[runtimeConfig.ID+".status"] = string(result.Status)
 		if strings.TrimSpace(result.Path) != "" {
 			statusMap[runtimeConfig.ID+".path"] = result.Path
+			statusMap[runtimeConfig.ID+".command"] = result.Path
+		}
+		if strings.TrimSpace(result.HelperAppPath) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_path"] = result.HelperAppPath
+			statusMap[runtimeConfig.ID+".helperAppPath"] = result.HelperAppPath
 		}
 		if strings.TrimSpace(result.Version) != "" {
 			statusMap[runtimeConfig.ID+".version"] = result.Version

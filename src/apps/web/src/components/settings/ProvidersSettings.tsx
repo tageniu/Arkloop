@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useLayoutEffect, useRef, memo, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, useCallback, useEffect, useMemo, useLayoutEffect, useRef, memo, type CSSProperties, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Plus,
@@ -39,6 +39,7 @@ import { SettingsModalFrame } from './_SettingsModalFrame'
 import { SettingsSelect } from './_SettingsSelect'
 import { SettingsSegmentedControl } from './_SettingsSegmentedControl'
 import { SettingsSwitch } from './_SettingsSwitch'
+import { SettingsSummaryCard, SettingsSummaryCardBadge, SettingsSummaryCardLine } from './_SettingsSummaryCard'
 import {
   AdvancedOptionsDisclosure,
   HeadersEditor,
@@ -434,40 +435,23 @@ function ProviderSummaryCard({
     : vendorLabel(toVendorKey(provider.provider, provider.openai_api_mode), p)
   const baseUrl = provider.base_url?.trim() || '—'
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onOpen()
-  }
-
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={handleKeyDown}
-      className="group relative flex min-h-[138px] cursor-pointer flex-col rounded-xl bg-[var(--c-bg-input)] p-4 text-left outline-none transition-[border-color,box-shadow,background-color] duration-180 hover:[box-shadow:0_0_0_0.35px_var(--c-input-border-color-hover)] focus-visible:[box-shadow:0_0_0_1px_var(--c-input-border-color-hover)]"
-      style={{ border: '0.5px solid var(--c-input-border-color)' }}
-    >
+    <SettingsSummaryCard onClick={onOpen}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-[14px] font-semibold leading-tight text-[var(--c-text-primary)]">{provider.name}</h3>
           <p className="mt-1 truncate text-[11px] leading-tight text-[var(--c-text-muted)]">{apiMode}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="rounded-md bg-[var(--c-bg-deep)] px-1.5 py-0.5 text-[10px] font-medium leading-tight text-[var(--c-text-muted)]">
-            {local ? p.localProvider : (p.filterCloud ?? 'Cloud')}
-          </span>
+          <SettingsSummaryCardBadge>{local ? p.localProvider : (p.filterCloud ?? 'Cloud')}</SettingsSummaryCardBadge>
           {provider.read_only && (
-            <span className="rounded-md bg-[var(--c-bg-deep)] px-1.5 py-0.5 text-[10px] font-medium leading-tight text-[var(--c-text-muted)]">
-              {p.readOnlyProvider}
-            </span>
+            <SettingsSummaryCardBadge>{p.readOnlyProvider}</SettingsSummaryCardBadge>
           )}
         </div>
       </div>
       <div className="mt-4 min-w-0 space-y-2 pr-[152px]">
-        <ProviderCardLine label={p.baseUrl} value={baseUrl} />
-        <ProviderCardLine label={p.modelsSection} value={`${provider.models.length} / ${enabledModels}`} />
+        <SettingsSummaryCardLine label={p.baseUrl} value={baseUrl} />
+        <SettingsSummaryCardLine label={p.modelsSection} value={`${provider.models.length} / ${enabledModels}`} />
       </div>
       <div
         className="pointer-events-none absolute bottom-3 right-3 flex items-center gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
@@ -511,16 +495,7 @@ function ProviderSummaryCard({
           </SettingsIconButton>
         )}
       </div>
-    </div>
-  )
-}
-
-function ProviderCardLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[10px] font-medium leading-tight text-[var(--c-text-muted)]">{label}</div>
-      <div className="mt-0.5 truncate text-[12px] font-medium leading-tight text-[var(--c-text-secondary)]">{value}</div>
-    </div>
+    </SettingsSummaryCard>
   )
 }
 

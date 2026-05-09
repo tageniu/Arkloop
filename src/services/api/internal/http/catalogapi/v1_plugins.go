@@ -209,33 +209,54 @@ func handlePluginPackage(w nethttp.ResponseWriter, r *nethttp.Request, traceID s
 }
 
 func handlePluginEnablement(w nethttp.ResponseWriter, r *nethttp.Request, traceID string, actor *httpkit.Actor, enabler *plugincontrib.Enabler, pool data.DB, pluginID string) {
-	if r.Method != nethttp.MethodPut {
+	switch r.Method {
+	case nethttp.MethodGet:
+		if !httpkit.RequirePerm(actor, auth.PermDataPersonasRead, w, traceID) {
+			return
+		}
+		item, err := enabler.GetEnablement(r.Context(), plugincontrib.EnableRequest{
+			AccountID:    actor.AccountID,
+			UserID:       actor.UserID,
+			PluginID:     pluginID,
+			ProfileRef:   sharedenvironmentref.BuildProfileRef(actor.AccountID, &actor.UserID),
+			WorkspaceRef: strings.TrimSpace(r.URL.Query().Get("workspace_ref")),
+		})
+		if err != nil {
+			httpkit.WriteError(w, nethttp.StatusBadRequest, "plugins.enablement_failed", err.Error(), traceID, nil)
+			return
+		}
+		if item == nil {
+			httpkit.WriteError(w, nethttp.StatusNotFound, "plugins.enablement_not_found", "plugin enablement not found", traceID, nil)
+			return
+		}
+		httpkit.WriteJSON(w, traceID, nethttp.StatusOK, toPluginEnablementResponse(*item))
+	case nethttp.MethodPut:
+		if !httpkit.RequirePerm(actor, auth.PermDataPersonasManage, w, traceID) {
+			return
+		}
+		var req pluginEnablementRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			httpkit.WriteError(w, nethttp.StatusBadRequest, "plugins.invalid_request", "invalid JSON body", traceID, nil)
+			return
+		}
+		item, err := enabler.SetEnabled(r.Context(), plugincontrib.EnableRequest{
+			AccountID:    actor.AccountID,
+			UserID:       actor.UserID,
+			PluginID:     pluginID,
+			ProfileRef:   sharedenvironmentref.BuildProfileRef(actor.AccountID, &actor.UserID),
+			WorkspaceRef: req.WorkspaceRef,
+			Enabled:      req.Enabled,
+			Settings:     req.Settings,
+		})
+		if err != nil {
+			httpkit.WriteError(w, nethttp.StatusBadRequest, "plugins.enable_failed", err.Error(), traceID, nil)
+			return
+		}
+		notifyMCPChanged(r.Context(), pool, actor.AccountID)
+		httpkit.WriteJSON(w, traceID, nethttp.StatusOK, toPluginEnablementResponse(item))
+	default:
 		writeMethodNotAllowedJSON(w, traceID)
-		return
 	}
-	if !httpkit.RequirePerm(actor, auth.PermDataPersonasManage, w, traceID) {
-		return
-	}
-	var req pluginEnablementRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpkit.WriteError(w, nethttp.StatusBadRequest, "plugins.invalid_request", "invalid JSON body", traceID, nil)
-		return
-	}
-	item, err := enabler.SetEnabled(r.Context(), plugincontrib.EnableRequest{
-		AccountID:    actor.AccountID,
-		UserID:       actor.UserID,
-		PluginID:     pluginID,
-		ProfileRef:   sharedenvironmentref.BuildProfileRef(actor.AccountID, &actor.UserID),
-		WorkspaceRef: req.WorkspaceRef,
-		Enabled:      req.Enabled,
-		Settings:     req.Settings,
-	})
-	if err != nil {
-		httpkit.WriteError(w, nethttp.StatusBadRequest, "plugins.enable_failed", err.Error(), traceID, nil)
-		return
-	}
-	notifyMCPChanged(r.Context(), pool, actor.AccountID)
-	httpkit.WriteJSON(w, traceID, nethttp.StatusOK, toPluginEnablementResponse(item))
 }
 
 func handlePluginSettings(w nethttp.ResponseWriter, r *nethttp.Request, traceID string, actor *httpkit.Actor, enabler *plugincontrib.Enabler, pool data.DB, pluginID string) {

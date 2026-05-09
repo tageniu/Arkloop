@@ -248,3 +248,18 @@ func TestResolveStringRejectsUnknownPlaceholder(t *testing.T) {
 		t.Fatalf("expected unknown placeholder error, got %v", err)
 	}
 }
+
+func TestResolveStringSupportsRuntimeCommandAndHelperAppPath(t *testing.T) {
+	got, err := ResolveString("${runtime.cua-driver.command} ${runtime.cua-driver.helperAppPath}", PlaceholderContext{
+		RuntimePaths: map[string]string{"cua-driver": "/tmp/CuaDriver.app/Contents/MacOS/cua-driver"},
+		RuntimeProperties: map[string]map[string]string{
+			"cua-driver": {"helper_app_path": "/tmp/CuaDriver.app"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve runtime placeholders: %v", err)
+	}
+	if got != "/tmp/CuaDriver.app/Contents/MacOS/cua-driver /tmp/CuaDriver.app" {
+		t.Fatalf("unexpected resolution: %q", got)
+	}
+}

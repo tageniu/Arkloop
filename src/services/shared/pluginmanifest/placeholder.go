@@ -9,11 +9,12 @@ import (
 var placeholderPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 type PlaceholderContext struct {
-	RuntimePaths map[string]string
-	Settings     map[string]string
-	PluginData   string
-	Arch         string
-	Platform     string
+	RuntimePaths      map[string]string
+	RuntimeProperties map[string]map[string]string
+	Settings          map[string]string
+	PluginData        string
+	Arch              string
+	Platform          string
 }
 
 func ResolveString(value string, ctx PlaceholderContext) (string, error) {
@@ -71,9 +72,8 @@ func resolvePlaceholder(key string, ctx PlaceholderContext) (string, error) {
 		return ctx.Arch, nil
 	case key == "platform":
 		return ctx.Platform, nil
-	case strings.HasPrefix(key, "runtime.") && strings.HasSuffix(key, ".path"):
-		id := strings.TrimSuffix(strings.TrimPrefix(key, "runtime."), ".path")
-		if value, ok := ctx.RuntimePaths[id]; ok {
+	case strings.HasPrefix(key, "runtime."):
+		if value, ok := resolveRuntimePlaceholder(strings.TrimPrefix(key, "runtime."), ctx); ok {
 			return value, nil
 		}
 	case strings.HasPrefix(key, "settings."):
@@ -83,4 +83,37 @@ func resolvePlaceholder(key string, ctx PlaceholderContext) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("unknown plugin placeholder %q", key)
+}
+
+func resolveRuntimePlaceholder(key string, ctx PlaceholderContext) (string, bool) {
+	index := strings.LastIndex(key, ".")
+	if index <= 0 || index == len(key)-1 {
+		return "", false
+	}
+	id := key[:index]
+	field := key[index+1:]
+	if field == "command" {
+		field = "path"
+	}
+	if field == "path" {
+		if value, ok := ctx.RuntimePaths[id]; ok {
+			return value, true
+		}
+	}
+	if values := ctx.RuntimeProperties[id]; len(values) > 0 {
+		if value, ok := values[field]; ok {
+			return value, true
+		}
+		if field == "helperAppPath" {
+			if value, ok := values["helper_app_path"]; ok {
+				return value, true
+			}
+		}
+		if field == "helper_app_path" {
+			if value, ok := values["helperAppPath"]; ok {
+				return value, true
+			}
+		}
+	}
+	return "", false
 }
