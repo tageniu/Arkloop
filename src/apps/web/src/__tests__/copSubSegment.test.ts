@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CopBlockItem } from '../assistantTurnSegments'
-import { aggregateMainTitle, titleSpansToText, buildSubSegments, categoryForTool, runningToolLabel } from '../copSubSegment'
+import { aggregateMainTitle, titleSpansToLocaleText, titleSpansToText, buildSubSegments, categoryForTool, runningToolLabel } from '../copSubSegment'
 
 function toolCall(
   id: string,
@@ -74,6 +74,7 @@ describe('copSubSegment web search titles', () => {
 
     expect(runningToolLabel('web_search', { query: 'rust crate niche' })).toBe('Searching for rust crate niche')
     expect(titleSpansToText(aggregateMainTitle([openSegment], true, false))).toBe('Searching for rust crate niche...')
+    expect(titleSpansToLocaleText(aggregateMainTitle([openSegment], true, false), 'zh')).toBe('正在搜索 rust crate niche...')
     expect(titleSpansToText(aggregateMainTitle([openSegment], true, false))).not.toContain('web_search')
   })
 
@@ -100,6 +101,7 @@ describe('copSubSegment web search titles', () => {
 
     expect(segments[0]?.title).toBe('Searched for rust crate niche')
     expect(titleSpansToText(aggregateMainTitle(segments, false, true))).toBe('Searched for rust crate niche')
+    expect(titleSpansToLocaleText(aggregateMainTitle(segments, false, true), 'zh')).toBe('已搜索 rust crate niche')
     expect(titleSpansToText(aggregateMainTitle(segments, false, true))).not.toBe('1 step completed')
   })
 
@@ -111,6 +113,20 @@ describe('copSubSegment web search titles', () => {
 
     expect(titleSpansToText(aggregateMainTitle(segments, false, true))).toBe('Searched for rust crate niche +1')
     expect(titleSpansToText(aggregateMainTitle(segments, false, true))).not.toBe('2 steps completed')
+  })
+})
+
+describe('copSubSegment plan mode titles', () => {
+  it('enter_plan_mode 使用计划分类和可读标题', () => {
+    const segments = buildSubSegments([
+      toolCall('plan1', 'enter_plan_mode', 1),
+    ])
+
+    expect(categoryForTool('enter_plan_mode')).toBe('plan')
+    expect(segments[0]?.category).toBe('plan')
+    expect(segments[0]?.title).toBe('Enter Plan Mode')
+    expect(titleSpansToText(aggregateMainTitle(segments, false, true))).toBe('Enter Plan Mode')
+    expect(titleSpansToText(aggregateMainTitle(segments, false, true))).not.toContain('enter_plan_mode')
   })
 })
 

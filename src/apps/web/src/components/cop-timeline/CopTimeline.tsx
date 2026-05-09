@@ -5,7 +5,7 @@ import type { CodeExecution } from '../CodeExecutionCard'
 import type { SubAgentRef } from '../../storage'
 import { useLocale } from '../../contexts/LocaleContext'
 import type { CopSubSegment, ResolvedPool } from '../../copSubSegment'
-import { aggregateMainTitle, titleSpansToText, TOP_LEVEL_TOOL_NAMES } from '../../copSubSegment'
+import { aggregateMainTitle, titleSpansToLocaleText, TOP_LEVEL_TOOL_NAMES } from '../../copSubSegment'
 import { recordPerfCount, recordPerfValue } from '../../perfDebug'
 import {
   COP_TIMELINE_THINKING_PLAIN_LINE_HEIGHT_PX,
@@ -22,7 +22,7 @@ import {
 import { AssistantThinkingMarkdown } from './ThinkingBlock'
 import { CopTimelineSegment } from './CopTimelineSegment'
 import { CopTimelineUnifiedRow } from './CopUnifiedRow'
-import { localizeTimelineLabel } from './labels'
+import { localizeTimelineLabel, localizeTimelineTitleSpan } from './labels'
 import { markerForCategory } from './markers'
 
 export type { WebSearchPhaseStep } from './types'
@@ -161,7 +161,7 @@ export function CopTimeline({
     if (anyThinking && isComplete && !hasSegments) return thoughtDurationLabel
     if (pendingShowThinkingHeader) return pendingThinkingHeaderLabel ?? ''
     if (hasSegments) {
-      if (aggregatedSpans.length > 0) return titleSpansToText(aggregatedSpans)
+      if (aggregatedSpans.length > 0) return titleSpansToLocaleText(aggregatedSpans, locale)
     }
     if (anyThinking) return thoughtDurationLabel
     if (isComplete) return 'Completed'
@@ -229,7 +229,7 @@ export function CopTimeline({
             {isComplete && aggregatedSpans.length > 0 && !anyThinking && !headerOverride ? (
               <span data-phase="complete">
                 <RenderTitleSpans
-                  spans={aggregatedSpans.map(s => 'diffKind' in s ? s : { text: localizeTimelineLabel(s.text, locale) })}
+                  spans={aggregatedSpans.map(s => localizeTimelineTitleSpan(s, locale))}
                 />
               </span>
             ) : (

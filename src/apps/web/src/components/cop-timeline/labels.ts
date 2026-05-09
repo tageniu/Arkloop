@@ -1,7 +1,10 @@
 import type { Locale } from '../../locales'
+import type { TitleSpan } from '../../copSubSegment'
 
-function zhCount(count: string, noun: string): string {
-  return `${count} ${noun}`
+export function localizeTimelineTitleSpan(span: TitleSpan, locale: Locale): TitleSpan {
+  if ('diffKind' in span) return span
+  if (locale === 'zh' && span.zh) return { text: span.zh }
+  return { text: localizeTimelineLabel(span.text, locale) }
 }
 
 export function localizeTimelineLabel(label: string, locale: Locale): string {
@@ -43,6 +46,8 @@ export function localizeTimelineLabel(label: string, locale: Locale): string {
     'Reviewing sources': '正在检查来源',
     'Enter Plan Mode': '进入计划模式',
     'Exit Plan Mode': '退出计划模式',
+    enter_plan_mode: '进入计划模式',
+    exit_plan_mode: '退出计划模式',
     'Generating image': '正在生成图片',
     'Generated image': '已生成图片',
     'Image generation failed': '图片生成失败',
@@ -50,39 +55,6 @@ export function localizeTimelineLabel(label: string, locale: Locale): string {
     'Read todos': '已读取待办',
   }
   if (exact[core]) return trailingDots ? `${exact[core]}...` : exact[core]
-
-  const patterns: Array<[RegExp, (match: RegExpMatchArray) => string]> = [
-    [/^(\d+) steps? completed$/, (m) => `${m[1]} 步已完成`],
-    [/^Listed (\d+) files?$/, (m) => `已列出 ${zhCount(m[1]!, '个文件')}`],
-    [/^Read (\d+) files?$/, (m) => `已读取 ${zhCount(m[1]!, '个文件')}`],
-    [/^Read a file$/, () => '已读取 1 个文件'],
-    [/^(\d+) searches$/, (m) => `${m[1]} 次搜索`],
-    [/^Ran (\d+) commands?$/, (m) => `已运行 ${zhCount(m[1]!, '条命令')}`],
-    [/^Wrote (\d+) files?$/, (m) => `已写入 ${zhCount(m[1]!, '个文件')}`],
-    [/^Wrote (.+)$/, (m) => `已写入 ${m[1]}`],
-    [/^Writing (.+)$/, (m) => `正在写入 ${m[1]}`],
-    [/^Edited (\d+) files?$/, (m) => `已编辑 ${zhCount(m[1]!, '个文件')}`],
-    [/^Edited (.+)$/, (m) => `已编辑 ${m[1]}`],
-    [/^Editing (.+)$/, (m) => `正在编辑 ${m[1]}`],
-    [/^Read (.+)$/, (m) => `已读取 ${m[1]}`],
-    [/^Reading (.+)$/, (m) => `正在读取 ${m[1]}`],
-    [/^Listed (.+)$/, (m) => `已列出 ${m[1]}`],
-    [/^Listing (.+)$/, (m) => `正在列出 ${m[1]}`],
-    [/^Searched (.+)$/, (m) => `已搜索 ${m[1]}`],
-    [/^Searching (.+)$/, (m) => `正在搜索 ${m[1]}`],
-    [/^(\d+) agent tasks? completed$/, (m) => `${m[1]} 个子代理任务已完成`],
-    [/^(\d+) fetches completed$/, (m) => `${m[1]} 次获取已完成`],
-    [/^Generated (\d+) images$/, (m) => `已生成 ${m[1]} 张图片`],
-    [/^(\d+) image generations failed$/, (m) => `${m[1]} 次图片生成失败`],
-  ]
-
-  for (const [re, format] of patterns) {
-    const match = core.match(re)
-    if (match) {
-      const value = format(match)
-      return trailingDots ? `${value}...` : value
-    }
-  }
 
   return label
 }

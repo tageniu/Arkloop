@@ -36,6 +36,7 @@ export function markerForCategory(category: CopSegmentCategory): TimelineMarker 
     case 'fetch':
     case 'search': return { kind: 'icon', icon: Globe, label: 'Search' }
     case 'image': return { kind: 'icon', icon: FileImage, label: 'Image' }
+    case 'plan': return { kind: 'icon', icon: ClipboardList, label: 'Plan' }
     case 'generic': return DOT_MARKER
   }
 }
@@ -73,6 +74,9 @@ export function markerForToolName(toolName: string): TimelineMarker {
       return { kind: 'icon', icon: BotMessageSquare, label: 'Agent' }
     case 'todo_write':
       return { kind: 'icon', icon: ClipboardList, label: 'Todos' }
+    case 'enter_plan_mode':
+    case 'exit_plan_mode':
+      return { kind: 'icon', icon: ClipboardList, label: 'Plan' }
     case 'document_write':
       return { kind: 'icon', icon: FileText, label: 'Document' }
     case 'create_artifact':
@@ -98,4 +102,3 @@ export function markerForStep(step: WebSearchPhaseStep): TimelineMarker {
   if (step.kind === 'reviewing') return { kind: 'icon', icon: Globe, label: 'Review' }
   return { kind: 'icon', icon: Search, label: 'Search' }
 }
-

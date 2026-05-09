@@ -397,6 +397,40 @@ describe('CopTimeline', () => {
       expect(idx1).toBeLessThan(idx2)
     })
 
+    it('does not guess-translate legacy composite segment titles', () => {
+      const seg = makeSeg({
+        id: 'seg1',
+        category: 'explore',
+        status: 'closed',
+        title: 'Read 9 files, 10 searches, Listed 3 files',
+        items: [],
+      })
+      const html = renderTimeline({
+        segments: [seg],
+        pool: EMPTY_POOL,
+        isComplete: true,
+      })
+      expect(html).toContain('Read 9 files, 10 searches, Listed 3 files')
+      expect(html).not.toContain('正在搜索 for')
+    })
+
+    it('uses display name for enter_plan_mode titles', () => {
+      const seg = makeSeg({
+        id: 'seg1',
+        category: 'generic',
+        status: 'closed',
+        title: 'enter_plan_mode',
+        items: [{ kind: 'call', call: { toolCallId: 'plan_1', toolName: 'enter_plan_mode', arguments: {} }, seq: 0 }],
+      })
+      const html = renderTimeline({
+        segments: [seg],
+        pool: EMPTY_POOL,
+        isComplete: true,
+      })
+      expect(html).toContain('进入计划模式')
+      expect(html).not.toContain('enter_plan_mode')
+    })
+
     it('segment with status=open shows its title', () => {
       const seg = makeSeg({
         id: 'seg1',

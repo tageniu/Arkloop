@@ -7,7 +7,7 @@ import type { SubAgentRef } from '../../storage'
 
 import { CopThoughtSummaryRow, TimelineNarrativeBody } from './ThinkingBlock'
 import { FileOpToolRow, FileOpToolCard } from './ToolRows'
-import { normalizeToolName } from '../../toolPresentation'
+import { normalizeToolName, presentationForTool } from '../../toolPresentation'
 import { WebFetchItem } from './WebFetchItem'
 import { SubAgentBlock } from '../SubAgentBlock'
 import { CodeExecutionCard } from '../CodeExecutionCard'
@@ -17,7 +17,7 @@ import { timelineStepDisplayLabel } from './types'
 import { SourceListCard } from './SourceList'
 import { QueryPill } from './utils'
 import { useLocale } from '../../contexts/LocaleContext'
-import { localizeTimelineLabel } from './labels'
+import { localizeTimelineLabel, localizeTimelineTitleSpan } from './labels'
 import type { Locale } from '../../locales'
 
 const EXPLORE_BOTTOM_PAD = 0
@@ -156,7 +156,7 @@ export function CopTimelineSegment({
       >
         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           {hasTitleSpans ? (
-            <RenderTitleSpans spans={segment.titleSpans!.map(s => 'diffKind' in s ? s : { text: localizeTimelineLabel(s.text, locale) })} />
+            <RenderTitleSpans spans={segment.titleSpans!.map(s => localizeTimelineTitleSpan(s, locale))} />
           ) : (
             <TypewriterText text={headerLabel} live={headerLive} className={headerLive ? 'thinking-shimmer-dim' : undefined} />
           )}
@@ -322,11 +322,12 @@ function renderItem(
     }
   }
 
-  // Fallback: render tool name + status
+  // Fallback: keep unknown tool rows readable instead of exposing raw ids.
   const hasError = typeof call.errorClass === 'string' && call.errorClass !== ''
+  const fallbackTitle = localizeTimelineLabel(presentationForTool(call.toolName, call.arguments).description, locale)
   return (
     <div style={{ fontSize: 'var(--c-cop-row-font-size)', color: 'var(--c-cop-row-fg)', lineHeight: 'var(--c-cop-row-line-height)' }}>
-      <TypewriterText text={call.toolName} live={live && !hasError && call.result === undefined} />
+      <TypewriterText text={fallbackTitle} live={live && !hasError && call.result === undefined} />
     </div>
   )
 }
