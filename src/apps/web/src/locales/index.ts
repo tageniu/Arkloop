@@ -1050,6 +1050,8 @@ export interface LocaleStrings {
       source: string;
       runtimeStatus: string;
       helperApp: string;
+      permissionApp: string;
+      bundleId: string;
       runtimeBinary: string;
       notRequired: string;
       status: string;

@@ -60,6 +60,14 @@ func (e *Enabler) InstallRuntime(ctx context.Context, req EnableRequest) (data.P
 			statusMap[runtimeConfig.ID+".helper_app_path"] = result.HelperAppPath
 			statusMap[runtimeConfig.ID+".helperAppPath"] = result.HelperAppPath
 		}
+		if strings.TrimSpace(result.HelperAppName) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_name"] = result.HelperAppName
+			statusMap[runtimeConfig.ID+".helperAppName"] = result.HelperAppName
+		}
+		if strings.TrimSpace(result.HelperAppBundleID) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_bundle_id"] = result.HelperAppBundleID
+			statusMap[runtimeConfig.ID+".helperAppBundleID"] = result.HelperAppBundleID
+		}
 		if strings.TrimSpace(result.Version) != "" {
 			statusMap[runtimeConfig.ID+".version"] = result.Version
 		}
@@ -136,6 +144,14 @@ func (e *Enabler) detectRuntimeState(ctx context.Context, pkg data.PluginPackage
 		if strings.TrimSpace(result.HelperAppPath) != "" {
 			statusMap[runtimeConfig.ID+".helper_app_path"] = result.HelperAppPath
 			statusMap[runtimeConfig.ID+".helperAppPath"] = result.HelperAppPath
+		}
+		if strings.TrimSpace(result.HelperAppName) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_name"] = result.HelperAppName
+			statusMap[runtimeConfig.ID+".helperAppName"] = result.HelperAppName
+		}
+		if strings.TrimSpace(result.HelperAppBundleID) != "" {
+			statusMap[runtimeConfig.ID+".helper_app_bundle_id"] = result.HelperAppBundleID
+			statusMap[runtimeConfig.ID+".helperAppBundleID"] = result.HelperAppBundleID
 		}
 		if strings.TrimSpace(result.Version) != "" {
 			statusMap[runtimeConfig.ID+".version"] = result.Version

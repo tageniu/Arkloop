@@ -1112,6 +1112,8 @@ export const zh: LocaleStrings = {
       source: "来源",
       runtimeStatus: "运行时",
       helperApp: "辅助应用",
+      permissionApp: "权限应用",
+      bundleId: "Bundle ID",
       runtimeBinary: "运行文件",
       notRequired: "无需安装",
       status: "状态",

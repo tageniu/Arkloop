@@ -470,6 +470,8 @@ function PluginDetailPage({
   const installBusy = busyAction === 'install-runtime'
   const toggleBusy = busyAction === 'toggle-enabled'
   const helperAppPath = runtimeStatusValue(status, ['helper_app_path', 'helperAppPath'])
+  const helperAppName = runtimeStatusValue(status, ['helper_app_name', 'helperAppName'])
+  const helperAppBundleID = runtimeStatusValue(status, ['helper_app_bundle_id', 'helperAppBundleID'])
   const runtimeBinaryPath = runtimeStatusValue(status, ['command', 'path'])
 
   return (
@@ -537,6 +539,16 @@ function PluginDetailPage({
           {runtimeNeeded && runtimeReady && helperAppPath && (
             <PluginDetailRow label={labels.helperApp}>
               <PluginValue value={helperAppPath} mono />
+            </PluginDetailRow>
+          )}
+          {runtimeNeeded && runtimeReady && helperAppName && (
+            <PluginDetailRow label={labels.permissionApp}>
+              <PluginValue value={helperAppName} />
+            </PluginDetailRow>
+          )}
+          {runtimeNeeded && runtimeReady && helperAppBundleID && (
+            <PluginDetailRow label={labels.bundleId}>
+              <PluginValue value={helperAppBundleID} mono />
             </PluginDetailRow>
           )}
           {runtimeNeeded && runtimeReady && runtimeBinaryPath && (

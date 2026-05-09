@@ -1123,6 +1123,8 @@ export const en: LocaleStrings = {
       source: "Source",
       runtimeStatus: "Runtime",
       helperApp: "Helper app",
+      permissionApp: "Permission app",
+      bundleId: "Bundle ID",
       runtimeBinary: "Binary",
       notRequired: "Not required",
       status: "Status",
