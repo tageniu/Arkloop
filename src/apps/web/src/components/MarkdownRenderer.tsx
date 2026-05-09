@@ -341,22 +341,8 @@ function ArtifactAwareImg({ src, alt }: { src?: string; alt?: string }) {
 
     if (!artifact || !accessToken) return null
 
-    const openArtifact = (trigger: HTMLElement | null) => {
-      onOpenResource?.(artifactToResourceRef(artifact), { trigger, artifacts, runId })
-    }
-
     if (artifact.mime_type.startsWith('image/')) {
-      const image = <ArtifactImage artifact={artifact} accessToken={accessToken} />
-      if (!onOpenResource) return image
-      return (
-        <button
-          type="button"
-          onClick={(event) => openArtifact(event.currentTarget)}
-          style={{ display: 'inline-block', padding: 0, border: 0, background: 'transparent', cursor: 'zoom-in' }}
-        >
-          {image}
-        </button>
-      )
+      return <ArtifactImage artifact={artifact} accessToken={accessToken} />
     }
     if (artifact.mime_type === 'text/html') {
       return <ArtifactHtmlPreview artifact={artifact} accessToken={accessToken} />

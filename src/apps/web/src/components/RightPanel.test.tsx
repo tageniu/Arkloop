@@ -54,7 +54,7 @@ describe('RightPanel', () => {
     const onSelectTab = vi.fn()
     const tabs: RightPanelTab[] = [
       { id: 'files', kind: 'files', title: 'Files', content: <div>file tree</div> },
-      { id: 'doc', kind: 'document', title: 'random-doc', content: <div>doc body</div> },
+      { id: 'doc', kind: 'resource', title: 'random-doc', content: <div>doc body</div> },
     ]
 
     await act(async () => {
@@ -93,7 +93,7 @@ describe('RightPanel', () => {
     await act(async () => {
       root.render(
         <LocalizedRightPanel
-          tabs={[{ id: 'doc', kind: 'document', title: 'random-doc', content: <div>doc body</div> }]}
+          tabs={[{ id: 'doc', kind: 'resource', title: 'random-doc', content: <div>doc body</div> }]}
           activeTabId="doc"
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
@@ -145,7 +145,7 @@ describe('RightPanel', () => {
     const root = createRoot(container)
     const tabs: RightPanelTab[] = Array.from({ length: 8 }, (_, index) => ({
       id: `tab-${index}`,
-      kind: 'document',
+      kind: 'resource',
       title: `Tab ${index}`,
       content: <div>{`body ${index}`}</div>,
     }))
@@ -179,9 +179,9 @@ describe('RightPanel', () => {
     document.body.appendChild(container)
     const root = createRoot(container)
     const tabs: RightPanelTab[] = [
-      { id: 'a', kind: 'document', title: 'A', content: <div>A body</div> },
-      { id: 'b', kind: 'document', title: 'B', content: <div>B body</div> },
-      { id: 'c', kind: 'document', title: 'C', content: <div>C body</div> },
+      { id: 'a', kind: 'resource', title: 'A', content: <div>A body</div> },
+      { id: 'b', kind: 'resource', title: 'B', content: <div>B body</div> },
+      { id: 'c', kind: 'resource', title: 'C', content: <div>C body</div> },
     ]
 
     await act(async () => {

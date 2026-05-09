@@ -231,16 +231,9 @@ type LocationState = {
   welcomeUserMessage?: AgentMessage
 } | null
 
-type DocumentPanelState = {
-  artifact: ArtifactRef
-  artifacts: ArtifactRef[]
-  runId?: string
-}
-
 type RightPanelStoredTab =
   | { id: string; kind: 'source'; title: string; messageId: string }
   | { id: string; kind: 'code'; title: string; execution: CodeExecution }
-  | { id: string; kind: 'document'; title: string; document: DocumentPanelState }
   | { id: string; kind: 'agent'; title: string; agent: SubAgentRef }
   | { id: string; kind: 'resource'; title: string; resource: ResourceRef; artifacts?: ArtifactRef[]; runId?: string }
 
@@ -1040,11 +1033,6 @@ export const ChatView = memo(function ChatView() {
     if (next) openCodePanelState(next)
     else if (activePanel?.type === 'code') closePanel()
   }, [activePanel, closePanel, codePanelExecution, openCodePanelState])
-  const setDocumentPanelArtifact = useCallback<React.Dispatch<React.SetStateAction<DocumentPanelState | null>>>((value) => {
-    const next = typeof value === 'function' ? value(documentPanelArtifact) : value
-    if (next) openDocumentPanelState(next)
-    else if (activePanel?.type === 'document') closePanel()
-  }, [activePanel, closePanel, documentPanelArtifact, openDocumentPanelState])
   // --- Work todo 进度 ---
   const { showRunDetailButton, showDebugPanel, runDetailPanelRunId, setRunDetailPanelRunId } = useDevTools()
 
@@ -2417,9 +2405,11 @@ export const ChatView = memo(function ChatView() {
       const target = current[index]
       if (target.kind === 'source') setSourcePanelMessageId(null)
       else if (target.kind === 'code' && activePanel?.type === 'code' && activePanel.execution.id === target.execution.id) setCodePanelExecution(null)
-      else if (target.kind === 'document' && activePanel?.type === 'document' && activePanel.artifact.artifact.key === target.document.artifact.key) setDocumentPanelArtifact(null)
       else if (target.kind === 'agent' && activePanel?.type === 'agent' && activePanel.agent.id === target.agent.id) closePanel()
-      else if (target.kind === 'resource' && activePanel?.type === 'resource' && resourceTabId(activePanel.resource) === target.id) closePanel()
+      else if (target.kind === 'resource') {
+        if (activePanel?.type === 'resource' && resourceTabId(activePanel.resource) === target.id) closePanel()
+        else if (activePanel?.type === 'document' && target.resource.kind === 'artifact' && activePanel.artifact.artifact.key === target.resource.key) closePanel()
+      }
 
       const next = current.filter((item) => item.id !== id)
       setActiveRightPanelTabId((activeId) => {
@@ -2428,7 +2418,7 @@ export const ChatView = memo(function ChatView() {
       })
       return next
     })
-  }, [activePanel, closePanel, setCodePanelExecution, setDocumentPanelArtifact, setSourcePanelMessageId, workPanelFolder])
+  }, [activePanel, closePanel, setCodePanelExecution, setSourcePanelMessageId, workPanelFolder])
 
   const setBrowserResourceForCurrentTab = useCallback((resource: BrowserResourceRef) => {
     const activeId = effectiveRightPanelTabIdRef.current
@@ -2458,11 +2448,21 @@ export const ChatView = memo(function ChatView() {
   useEffect(() => {
     if (documentPanelArtifact) {
       const artifact = documentPanelArtifact.artifact
+      const resource: ResourceRef = {
+        kind: 'artifact',
+        key: artifact.key,
+        filename: artifact.filename,
+        mimeType: artifact.mime_type,
+        size: artifact.size,
+        title: artifact.title,
+      }
       upsertRightPanelTab({
-        id: `document:${artifact.key}`,
-        kind: 'document',
+        id: resourceTabId(resource),
+        kind: 'resource',
         title: artifact.title ?? artifact.filename,
-        document: documentPanelArtifact,
+        resource,
+        artifacts: documentPanelArtifact.artifacts,
+        runId: documentPanelArtifact.runId,
       })
     }
   }, [documentPanelArtifact, upsertRightPanelTab])
@@ -2504,6 +2504,67 @@ export const ChatView = memo(function ChatView() {
       setActiveRightPanelTabId(tabId)
     }
   }, [resourcePanelResource, setBrowserResourceForCurrentTab])
+
+  const buildStoredPanelTab = useCallback((tab: RightPanelStoredTab): RightPanelTab | null => {
+    if (tab.kind === 'resource' && tab.resource.kind === 'browser') return null
+    if (tab.kind === 'source') {
+      const sources = resolvedMessageSources.get(tab.messageId)
+      if (!sources || sources.length === 0) return null
+      return {
+        id: tab.id,
+        kind: tab.kind,
+        title: tab.title,
+        content: (
+          <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+            <SourcesPanel sources={sources} onClose={() => closeRightPanelTab(tab.id)} />
+          </div>
+        ),
+      }
+    }
+    if (tab.kind === 'code') {
+      return {
+        id: tab.id,
+        kind: tab.kind,
+        title: tab.title,
+        content: (
+          <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+            <CodeExecutionPanel execution={tab.execution} onClose={() => closeRightPanelTab(tab.id)} />
+          </div>
+        ),
+      }
+    }
+    if (tab.kind === 'agent') {
+      return {
+        id: tab.id,
+        kind: tab.kind,
+        title: tab.title,
+        content: (
+          <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
+            <AgentPanel agent={tab.agent} onClose={() => closeRightPanelTab(tab.id)} />
+          </div>
+        ),
+      }
+    }
+    return {
+      id: tab.id,
+      kind: tab.kind,
+      title: tab.title,
+      icon: tab.resource.kind === 'local-file'
+        ? localFileTabIcon(tab.resource)
+        : tab.resource.kind === 'browser'
+          ? <BrowserSiteIcon url={tab.resource.url} faviconUrl={tab.resource.faviconUrl} />
+          : undefined,
+      content: (
+        <ResourcePreviewPanel
+          resource={tab.resource}
+          accessToken={accessToken}
+          artifacts={tab.artifacts}
+          runId={tab.runId}
+          onClose={() => closeRightPanelTab(tab.id)}
+        />
+      ),
+    }
+  }, [accessToken, closeRightPanelTab, resolvedMessageSources])
 
   const rightPanelRenderedTabs = useMemo<RightPanelTab[]>(() => {
     const tabs: RightPanelTab[] = []
@@ -2566,100 +2627,17 @@ export const ChatView = memo(function ChatView() {
         ),
       })
     }
-
     for (const tab of rightPanelTabs) {
-      if (tab.kind === 'resource' && tab.resource.kind === 'browser') continue
-      if (tab.kind === 'source') {
-        const sources = resolvedMessageSources.get(tab.messageId)
-        if (!sources || sources.length === 0) continue
-        tabs.push({
-          id: tab.id,
-          kind: tab.kind,
-          title: tab.title,
-          content: (
-            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
-              <SourcesPanel sources={sources} onClose={() => closeRightPanelTab(tab.id)} />
-            </div>
-          ),
-        })
-      } else if (tab.kind === 'code') {
-        tabs.push({
-          id: tab.id,
-          kind: tab.kind,
-          title: tab.title,
-          content: (
-            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
-              <CodeExecutionPanel execution={tab.execution} onClose={() => closeRightPanelTab(tab.id)} />
-            </div>
-          ),
-        })
-      } else if (tab.kind === 'document') {
-        const artifact = tab.document.artifact
-        tabs.push({
-          id: tab.id,
-          kind: tab.kind,
-          title: tab.title,
-          content: (
-            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
-              <ResourcePreviewPanel
-                resource={{
-                  kind: 'artifact',
-                  key: artifact.key,
-                  filename: artifact.filename,
-                  mimeType: artifact.mime_type,
-                  size: artifact.size,
-                  title: artifact.title,
-                }}
-                artifacts={tab.document.artifacts}
-                accessToken={accessToken}
-                runId={tab.document.runId}
-                onClose={() => closeRightPanelTab(tab.id)}
-              />
-            </div>
-          ),
-        })
-      } else if (tab.kind === 'agent') {
-        tabs.push({
-          id: tab.id,
-          kind: tab.kind,
-          title: tab.title,
-          content: (
-            <div style={{ width: '100%', height: '100%', contain: 'layout style' }}>
-              <AgentPanel agent={tab.agent} onClose={() => closeRightPanelTab(tab.id)} />
-            </div>
-          ),
-        })
-      } else {
-        tabs.push({
-          id: tab.id,
-          kind: tab.kind,
-          title: tab.title,
-          icon: tab.resource.kind === 'local-file'
-            ? localFileTabIcon(tab.resource)
-            : tab.resource.kind === 'browser'
-              ? <BrowserSiteIcon url={tab.resource.url} faviconUrl={tab.resource.faviconUrl} />
-              : undefined,
-          content: (
-            <ResourcePreviewPanel
-              resource={tab.resource}
-              accessToken={accessToken}
-              artifacts={tab.artifacts}
-              runId={tab.runId}
-              onClose={() => closeRightPanelTab(tab.id)}
-            />
-          ),
-        })
-      }
+      const rendered = buildStoredPanelTab(tab)
+      if (rendered) tabs.push(rendered)
     }
     return tabs
   }, [
     accessToken,
-    closePanel,
-    closeRightPanelTab,
+    buildStoredPanelTab,
     extraBrowserTabs,
     filesPreviewResource,
     pinLocalFileResource,
-    resolvedMessageSources,
     rightPanelTabs,
     t.rightPanel.browser,
     t.rightPanel.files,
@@ -2748,7 +2726,7 @@ export const ChatView = memo(function ChatView() {
 
   const openDocumentPanel = useCallback((artifact: ArtifactRef, options?: { trigger?: HTMLElement | null; artifacts?: ArtifactRef[]; runId?: string }) => {
     stabilizeDocumentPanelScroll(options?.trigger)
-    const tabId = `document:${artifact.key}`
+    const tabId = `resource:artifact:${artifact.key}`
     if (documentPanelArtifact?.artifact.key === artifact.key) {
       if (isPanelOpenRef.current && effectiveRightPanelTabIdRef.current === tabId) {
         closeRightPanelTab(tabId)

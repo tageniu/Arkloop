@@ -8,7 +8,7 @@ import './RightPanel.css'
 export type RightPanelTab = {
   id: string
   title: string
-  kind: 'web' | 'files' | 'source' | 'code' | 'document' | 'agent' | 'resource'
+  kind: 'web' | 'files' | 'source' | 'code' | 'agent' | 'resource'
   content: ReactNode
   closable?: boolean
   icon?: ReactNode
