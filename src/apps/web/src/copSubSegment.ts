@@ -470,6 +470,19 @@ function formatDiffSpans(path: string, diffMap: Map<string, { added: number; rem
   return spans
 }
 
+function sumDiffSpans(paths: string[], diffMap: Map<string, { added: number; removed: number }>): TitleSpan[] {
+  let added = 0
+  let removed = 0
+  for (const p of paths) {
+    const d = diffMap.get(p)
+    if (d) { added += d.added; removed += d.removed }
+  }
+  const spans: TitleSpan[] = []
+  if (added > 0) spans.push({ text: ` +${added}`, diffKind: 'added' })
+  if (removed > 0) spans.push({ text: ` -${removed}`, diffKind: 'removed' })
+  return spans
+}
+
 export function formatStatsSpans(stats: AggregatedCallStats): TitleSpan[] {
   const onlyLoadTools = Array.from(stats.byToolName.keys()).every((toolName) => LOAD_TOOL_NAMES.has(toolName))
   const groups: TitleSpan[][] = []
@@ -479,14 +492,18 @@ export function formatStatsSpans(stats: AggregatedCallStats): TitleSpan[] {
     spans.push(...formatDiffSpans(stats.writePaths[0]!, stats.writePathDiff))
     groups.push(spans)
   } else if (stats.writePaths.length > 1) {
-    groups.push([{ text: `Wrote ${stats.writePaths.length} files` }])
+    const spans: TitleSpan[] = [{ text: `Wrote ${stats.writePaths.length} files` }]
+    spans.push(...sumDiffSpans(stats.writePaths, stats.writePathDiff))
+    groups.push(spans)
   }
   if (stats.editPaths.length === 1) {
     const spans: TitleSpan[] = [{ text: `Edited ${stats.editPaths[0]}` }]
     spans.push(...formatDiffSpans(stats.editPaths[0]!, stats.editPathDiff))
     groups.push(spans)
   } else if (stats.editPaths.length > 1) {
-    groups.push([{ text: `Edited ${stats.editPaths.length} files` }])
+    const spans: TitleSpan[] = [{ text: `Edited ${stats.editPaths.length} files` }]
+    spans.push(...sumDiffSpans(stats.editPaths, stats.editPathDiff))
+    groups.push(spans)
   }
   if (stats.readPaths.size > 0) groups.push([{ text: `Read ${formatCount(stats.readPaths.size, 'file', 'files')}` }])
   if (stats.searchCount > 0) groups.push([{ text: formatCount(stats.searchCount, 'search', 'searches') }])
