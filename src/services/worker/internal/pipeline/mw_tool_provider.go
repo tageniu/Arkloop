@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"log/slog"
+	"os"
 	"strings"
 
 	sharedent "arkloop/services/shared/entitlement"
@@ -183,6 +184,24 @@ func BuildProviderExecutor(cfg toolprovider.ActiveProviderConfig) tools.Executor
 			return notConfiguredExecutor{groupName: groupName, providerName: providerName, missing: []string{"base_url"}}
 		}
 		provider := websearch.NewSearxngProvider(baseURL)
+		return websearch.NewToolExecutorWithProvider(provider)
+
+	case websearch.AgentSpecExa.Name:
+		key := ""
+		if cfg.APIKeyValue != nil {
+			key = strings.TrimSpace(*cfg.APIKeyValue)
+		}
+		if key == "" {
+			key = strings.TrimSpace(os.Getenv("EXA_API_KEY"))
+		}
+		if key == "" {
+			return notConfiguredExecutor{groupName: groupName, providerName: providerName, missing: []string{"api_key"}}
+		}
+		baseURL := ""
+		if cfg.BaseURL != nil {
+			baseURL = strings.TrimSpace(*cfg.BaseURL)
+		}
+		provider := websearch.NewExaProvider(key, baseURL)
 		return websearch.NewToolExecutorWithProvider(provider)
 
 	case webfetch.AgentSpecJina.Name:

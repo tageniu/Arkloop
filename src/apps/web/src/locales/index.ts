@@ -1210,9 +1210,11 @@ export interface LocaleStrings {
     fetchProviderFirecrawl: string;
     searchProviderBasic: string;
     searchProviderTavily: string;
+    searchProviderExa: string;
     searchProviderSearxng: string;
     searchProviderBasicDesc: string;
     searchProviderTavilyDesc: string;
+    searchProviderExaDesc: string;
     searchProviderSearxngDesc: string;
     fetchProviderJinaDesc: string;
     fetchProviderBasicDesc: string;

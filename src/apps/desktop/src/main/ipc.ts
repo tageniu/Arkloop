@@ -746,6 +746,13 @@ function connectorsFromProviderGroups(groups: ToolProviderGroup[]): ConnectorsCo
         ? secretPreview(activeSearch.key_prefix)
         : undefined,
       tavilyApiKeyStored: activeSearch?.provider_name === 'web_search.tavily' && Boolean(activeSearch.key_prefix),
+      exaApiKey: activeSearch?.provider_name === 'web_search.exa'
+        ? secretPreview(activeSearch.key_prefix)
+        : undefined,
+      exaApiKeyStored: activeSearch?.provider_name === 'web_search.exa' && Boolean(activeSearch.key_prefix),
+      exaBaseUrl: activeSearch?.provider_name === 'web_search.exa'
+        ? activeSearch.base_url
+        : undefined,
       searxngBaseUrl: activeSearch?.provider_name === 'web_search.searxng'
         ? activeSearch.base_url ?? DEFAULT_CONFIG.connectors.search.searxngBaseUrl
         : DEFAULT_CONFIG.connectors.search.searxngBaseUrl,
@@ -772,6 +779,8 @@ function providerNameToSearch(providerName: string): ConnectorsConfig['search'][
       return 'basic'
     case 'web_search.searxng':
       return 'searxng'
+    case 'web_search.exa':
+      return 'exa'
     case 'web_search.tavily':
       return 'tavily'
     default:
@@ -799,6 +808,7 @@ async function migrateLegacyConnectorsIfNeeded(config: AppConfig): Promise<void>
 function hasLegacySearchConfig(connectors: ConnectorsConfig): boolean {
   return connectors.search.provider === 'basic'
     || (connectors.search.provider === 'tavily' && Boolean(connectors.search.tavilyApiKey))
+    || (connectors.search.provider === 'exa' && Boolean(connectors.search.exaApiKey))
     || (connectors.search.provider === 'searxng' && Boolean(connectors.search.searxngBaseUrl))
 }
 
@@ -824,6 +834,21 @@ async function applySearchConnector(search: ConnectorsConfig['search']): Promise
     if (!search.tavilyApiKeyStored) {
       await upsertToolProviderCredential('web_search', 'web_search.tavily', {
         api_key: search.tavilyApiKey ?? '',
+      })
+    }
+    return
+  }
+  if (search.provider === 'exa') {
+    await activateToolProvider('web_search', 'web_search.exa')
+    const baseUrl = search.exaBaseUrl?.trim() ? search.exaBaseUrl : null
+    if (!search.exaApiKeyStored) {
+      await upsertToolProviderCredential('web_search', 'web_search.exa', {
+        api_key: search.exaApiKey ?? '',
+        base_url: baseUrl,
+      })
+    } else {
+      await upsertToolProviderCredential('web_search', 'web_search.exa', {
+        base_url: baseUrl,
       })
     }
     return
@@ -881,7 +906,7 @@ async function activateToolProvider(groupName: string, providerName: string): Pr
 async function upsertToolProviderCredential(
   groupName: string,
   providerName: string,
-  payload: Record<string, string>,
+  payload: Record<string, string | null>,
 ): Promise<void> {
   const body = JSON.stringify(payload)
   await requestToolProvider(`/v1/tool-providers/${groupName}/${providerName}/credential`, 'PUT', body)

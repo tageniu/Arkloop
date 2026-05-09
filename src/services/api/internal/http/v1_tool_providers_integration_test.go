@@ -125,7 +125,7 @@ func TestToolProvidersListActivateCredentialAndClear(t *testing.T) {
 		InvalidationListenerCtx: listenerCtx,
 		Logger:                  logger,
 		AuthService:             authService,
-		AccountMembershipRepo:       membershipRepo,
+		AccountMembershipRepo:   membershipRepo,
 		ToolProviderConfigsRepo: toolProvidersRepo,
 		SecretsRepo:             secretsRepo,
 	})
@@ -138,6 +138,82 @@ func TestToolProvidersListActivateCredentialAndClear(t *testing.T) {
 	initial := decodeJSONBody[toolProvidersListResponse](t, listResp.Body.Bytes())
 	if len(initial.Groups) == 0 {
 		t.Fatal("expected groups, got 0")
+	}
+	var initialExa toolProviderListItem
+	var initialExaFound bool
+	for _, g := range initial.Groups {
+		if g.GroupName != "web_search" {
+			continue
+		}
+		for _, p := range g.Providers {
+			if p.ProviderName == "web_search.exa" {
+				initialExa = p
+				initialExaFound = true
+			}
+		}
+	}
+	if !initialExaFound {
+		t.Fatal("expected exa provider in web_search catalog")
+	}
+	if !initialExa.RequiresAPIKey {
+		t.Fatal("expected exa to require api key")
+	}
+
+	actExa := doJSON(handler, nethttp.MethodPut, "/v1/tool-providers/web_search/web_search.exa/activate", nil, authHeader(token))
+	if actExa.Code != nethttp.StatusNoContent {
+		t.Fatalf("activate exa: %d %s", actExa.Code, actExa.Body.String())
+	}
+	exaKeyPayload := map[string]any{"api_key": "exa-1234567890abcdef", "base_url": "https://api.exa.ai"}
+	upsertExa := doJSON(handler, nethttp.MethodPut, "/v1/tool-providers/web_search/web_search.exa/credential", exaKeyPayload, authHeader(token))
+	if upsertExa.Code != nethttp.StatusNoContent {
+		t.Fatalf("upsert exa credential: %d %s", upsertExa.Code, upsertExa.Body.String())
+	}
+	listAfterExaKey := doJSON(handler, nethttp.MethodGet, "/v1/tool-providers", nil, authHeader(token))
+	if listAfterExaKey.Code != nethttp.StatusOK {
+		t.Fatalf("list after exa key: %d %s", listAfterExaKey.Code, listAfterExaKey.Body.String())
+	}
+	afterExaKey := decodeJSONBody[toolProvidersListResponse](t, listAfterExaKey.Body.Bytes())
+	var exa toolProviderListItem
+	exaFound := false
+	for _, g := range afterExaKey.Groups {
+		for _, p := range g.Providers {
+			if p.ProviderName == "web_search.exa" {
+				exa = p
+				exaFound = true
+			}
+		}
+	}
+	if !exaFound {
+		t.Fatal("expected exa provider after credential upsert")
+	}
+	if !exa.IsActive {
+		t.Fatal("expected exa active after activate")
+	}
+	if exa.KeyPrefix == nil || *exa.KeyPrefix != "exa-1234" {
+		t.Fatalf("unexpected exa key prefix: %v", exa.KeyPrefix)
+	}
+	if exa.BaseURL == nil || *exa.BaseURL != "https://api.exa.ai" {
+		t.Fatalf("unexpected exa base url: %v", exa.BaseURL)
+	}
+	clearExaBaseURL := doJSON(handler, nethttp.MethodPut, "/v1/tool-providers/web_search/web_search.exa/credential", map[string]any{"base_url": nil}, authHeader(token))
+	if clearExaBaseURL.Code != nethttp.StatusNoContent {
+		t.Fatalf("clear exa base url: %d %s", clearExaBaseURL.Code, clearExaBaseURL.Body.String())
+	}
+	listAfterExaBaseClear := doJSON(handler, nethttp.MethodGet, "/v1/tool-providers", nil, authHeader(token))
+	if listAfterExaBaseClear.Code != nethttp.StatusOK {
+		t.Fatalf("list after exa base clear: %d %s", listAfterExaBaseClear.Code, listAfterExaBaseClear.Body.String())
+	}
+	afterExaBaseClear := decodeJSONBody[toolProvidersListResponse](t, listAfterExaBaseClear.Body.Bytes())
+	for _, g := range afterExaBaseClear.Groups {
+		for _, p := range g.Providers {
+			if p.ProviderName == "web_search.exa" && p.BaseURL != nil {
+				t.Fatalf("expected exa base url cleared, got %v", *p.BaseURL)
+			}
+		}
+	}
+	clearExa := doJSON(handler, nethttp.MethodDelete, "/v1/tool-providers/web_search/web_search.exa/credential", nil, authHeader(token))
+	if clearExa.Code != nethttp.StatusNoContent {
+		t.Fatalf("clear exa credential: %d %s", clearExa.Code, clearExa.Body.String())
 	}
 
 	// 激活 tavily

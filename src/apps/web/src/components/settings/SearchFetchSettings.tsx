@@ -183,6 +183,7 @@ export function SearchFetchSettings({ accessToken }: Props) {
     { value: 'none', label: ds.providerNone },
     { value: 'basic', label: ds.searchProviderBasic },
     { value: 'tavily', label: ds.searchProviderTavily },
+    { value: 'exa', label: ds.searchProviderExa },
     { value: 'searxng', label: ds.searchProviderSearxng },
   ]
 
@@ -294,6 +295,36 @@ export function SearchFetchSettings({ accessToken }: Props) {
                     />
                   )}
                 />
+              )}
+              {config.search.provider === 'exa' && (
+                <>
+                  <SettingsRow
+                    title={ds.apiKeyLabel}
+                    description={ds.searchProviderExa}
+                    control={(
+                      <PasswordInput
+                        value={config.search.exaApiKey ?? ''}
+                        onChange={(value) => patchSearch({ exaApiKey: value || undefined, exaApiKeyStored: false })}
+                        placeholder="exa-..."
+                        showLabel={ds.connectorShowSecret}
+                        hideLabel={ds.connectorHideSecret}
+                      />
+                    )}
+                  />
+                  <SettingsRow
+                    title={ds.baseUrlLabel}
+                    description={ds.searchProviderExa}
+                    control={(
+                      <SettingsInput
+                        type="text"
+                        value={config.search.exaBaseUrl ?? ''}
+                        onChange={(event) => patchSearch({ exaBaseUrl: event.target.value || undefined })}
+                        placeholder="https://api.exa.ai"
+                        variant="md"
+                      />
+                    )}
+                  />
+                </>
               )}
               {config.search.provider === 'searxng' && (
                 <SettingsRow

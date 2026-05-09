@@ -81,7 +81,7 @@ function normalizeFetchProvider(p: unknown): FetchProvider {
 
 function normalizeSearchProvider(p: unknown): SearchProvider {
   if (p === 'browser' || p === 'duckduckgo') return 'basic'
-  if (p === 'none' || p === 'basic' || p === 'tavily' || p === 'searxng') return p
+  if (p === 'none' || p === 'basic' || p === 'tavily' || p === 'exa' || p === 'searxng') return p
   return DEFAULT_CONFIG.connectors.search.provider
 }
 
@@ -100,6 +100,8 @@ function normalizeSearchConnector(raw: unknown): SearchConnectorConfig {
   return {
     provider: normalizeSearchProvider(r.provider),
     ...(typeof r.tavilyApiKey === 'string' && r.tavilyApiKey ? { tavilyApiKey: r.tavilyApiKey } : {}),
+    ...(typeof r.exaApiKey === 'string' && r.exaApiKey ? { exaApiKey: r.exaApiKey } : {}),
+    ...(typeof r.exaBaseUrl === 'string' && r.exaBaseUrl ? { exaBaseUrl: r.exaBaseUrl } : {}),
     ...(typeof r.searxngBaseUrl === 'string' && r.searxngBaseUrl ? { searxngBaseUrl: r.searxngBaseUrl } : {}),
   }
 }

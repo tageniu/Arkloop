@@ -43,6 +43,8 @@ function providerNameToSearch(providerName: string): ConnectorsConfig['search'][
     return 'basic'
   case 'web_search.searxng':
     return 'searxng'
+  case 'web_search.exa':
+    return 'exa'
   case 'web_search.tavily':
     return 'tavily'
   default:
@@ -75,6 +77,11 @@ function connectorsFromProviderGroups(groups: ToolProviderGroup[]): ConnectorsCo
         ? secretPreview(activeSearch.key_prefix)
         : undefined,
       tavilyApiKeyStored: activeSearch?.provider_name === 'web_search.tavily' && Boolean(activeSearch.key_prefix),
+      exaApiKey: activeSearch?.provider_name === 'web_search.exa'
+        ? secretPreview(activeSearch.key_prefix)
+        : undefined,
+      exaApiKeyStored: activeSearch?.provider_name === 'web_search.exa' && Boolean(activeSearch.key_prefix),
+      exaBaseUrl: activeSearch?.provider_name === 'web_search.exa' ? activeSearch.base_url : undefined,
       searxngBaseUrl: activeSearch?.provider_name === 'web_search.searxng' ? activeSearch.base_url : undefined,
     },
   }
@@ -101,6 +108,21 @@ async function applySearchConnector(accessToken: string, search: ConnectorsConfi
     if (!search.tavilyApiKeyStored) {
       await updateToolProviderCredential(accessToken, 'web_search', 'web_search.tavily', {
         api_key: search.tavilyApiKey ?? '',
+      })
+    }
+    return
+  }
+  if (search.provider === 'exa') {
+    await activateToolProvider(accessToken, 'web_search', 'web_search.exa')
+    const baseUrl = search.exaBaseUrl?.trim() ? search.exaBaseUrl : null
+    if (!search.exaApiKeyStored) {
+      await updateToolProviderCredential(accessToken, 'web_search', 'web_search.exa', {
+        api_key: search.exaApiKey ?? '',
+        base_url: baseUrl,
+      })
+    } else {
+      await updateToolProviderCredential(accessToken, 'web_search', 'web_search.exa', {
+        base_url: baseUrl,
       })
     }
     return

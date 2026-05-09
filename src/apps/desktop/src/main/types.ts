@@ -2,7 +2,7 @@ export type ConnectionMode = 'local' | 'saas' | 'self-hosted'
 export type LocalPortMode = 'auto' | 'manual'
 
 export type FetchProvider = 'none' | 'jina' | 'basic' | 'firecrawl'
-export type SearchProvider = 'none' | 'basic' | 'tavily' | 'searxng'
+export type SearchProvider = 'none' | 'basic' | 'tavily' | 'exa' | 'searxng'
 
 export type FetchConnectorConfig = {
   provider: FetchProvider
@@ -17,6 +17,9 @@ export type SearchConnectorConfig = {
   provider: SearchProvider
   tavilyApiKey?: string
   tavilyApiKeyStored?: boolean
+  exaApiKey?: string
+  exaApiKeyStored?: boolean
+  exaBaseUrl?: string
   searxngBaseUrl?: string
 }
 

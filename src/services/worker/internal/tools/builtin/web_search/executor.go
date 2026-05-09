@@ -62,6 +62,15 @@ var AgentSpecBasic = tools.AgentToolSpec{
 	SideEffects: false,
 }
 
+var AgentSpecExa = tools.AgentToolSpec{
+	Name:        "web_search.exa",
+	LlmName:     "web_search",
+	Version:     "1",
+	Description: "search the internet and return summary results",
+	RiskLevel:   tools.RiskLevelLow,
+	SideEffects: false,
+}
+
 var LlmSpec = llm.ToolSpec{
 	Name:        "web_search",
 	Description: stringPtr(sharedtoolmeta.Must("web_search").LLMDescription),
@@ -92,6 +101,116 @@ var LlmSpec = llm.ToolSpec{
 	},
 }
 
+var LlmSpecBasic = LlmSpec
+var LlmSpecSearxng = LlmSpec
+var LlmSpecTavily = LlmSpec
+
+var LlmSpecExa = llm.ToolSpec{
+	Name:        "web_search",
+	Description: stringPtr("Search the web using Exa AI. Supports neural or keyword search, publication date filters, and optional highlights or text extraction."),
+	JSONSchema: map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"query": map[string]any{
+				"type":        "string",
+				"description": "search query string",
+			},
+			"count": map[string]any{
+				"type":        "integer",
+				"description": "number of results to return",
+				"default":     defaultMaxResults,
+				"minimum":     1,
+				"maximum":     exaMaxSearchCount,
+			},
+			"freshness": map[string]any{
+				"type":        "string",
+				"enum":        []any{"day", "week", "month", "year"},
+				"description": "filter by recent publication time",
+			},
+			"date_after": map[string]any{
+				"type":        "string",
+				"format":      "date",
+				"description": "only results published after this date, in YYYY-MM-DD format",
+			},
+			"date_before": map[string]any{
+				"type":        "string",
+				"format":      "date",
+				"description": "only results published before this date, in YYYY-MM-DD format",
+			},
+			"type": map[string]any{
+				"type":        "string",
+				"enum":        []any{"auto", "neural", "fast", "deep", "deep-reasoning", "instant"},
+				"description": "Exa search mode",
+			},
+			"contents": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"highlights": map[string]any{
+						"description": "true, or an object with maxCharacters, query, numSentences, or highlightsPerUrl",
+						"anyOf": []any{
+							map[string]any{"type": "boolean"},
+							map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"maxCharacters":    map[string]any{"type": "integer", "minimum": 1},
+									"query":            map[string]any{"type": "string"},
+									"numSentences":     map[string]any{"type": "integer", "minimum": 1},
+									"highlightsPerUrl": map[string]any{"type": "integer", "minimum": 1},
+								},
+								"additionalProperties": false,
+							},
+						},
+					},
+					"text": map[string]any{
+						"description": "true, or an object with maxCharacters",
+						"anyOf": []any{
+							map[string]any{"type": "boolean"},
+							map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"maxCharacters": map[string]any{"type": "integer", "minimum": 1},
+								},
+								"additionalProperties": false,
+							},
+						},
+					},
+					"summary": map[string]any{
+						"description": "true, or an object with query",
+						"anyOf": []any{
+							map[string]any{"type": "boolean"},
+							map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"query": map[string]any{"type": "string"},
+								},
+								"additionalProperties": false,
+							},
+						},
+					},
+				},
+				"additionalProperties": false,
+			},
+		},
+		"required":             []any{"query"},
+		"additionalProperties": false,
+	},
+}
+
+func ProviderLlmSpec(providerName string) (llm.ToolSpec, bool) {
+	switch strings.TrimSpace(providerName) {
+	case AgentSpecBasic.Name:
+		return LlmSpecBasic, true
+	case AgentSpecTavily.Name:
+		return LlmSpecTavily, true
+	case AgentSpecSearxng.Name:
+		return LlmSpecSearxng, true
+	case AgentSpecExa.Name:
+		return LlmSpecExa, true
+	default:
+		return LlmSpec, false
+	}
+}
+
 type ToolExecutor struct {
 	provider Provider
 	timeout  time.Duration
@@ -106,6 +225,10 @@ func NewSearxngExecutor(_ any) *ToolExecutor {
 }
 
 func NewTavilyExecutor(_ any) *ToolExecutor {
+	return &ToolExecutor{timeout: defaultTimeout}
+}
+
+func NewExaExecutor(_ any) *ToolExecutor {
 	return &ToolExecutor{timeout: defaultTimeout}
 }
 
@@ -127,7 +250,7 @@ func (e *ToolExecutor) Execute(
 	_ = toolName
 	started := time.Now()
 
-	queries, maxResults, argErr := parseArgs(args)
+	requests, argErr := e.parseSearchRequests(args)
 	if argErr != nil {
 		return tools.ExecutionResult{
 			Error:      argErr,
@@ -154,7 +277,7 @@ func (e *ToolExecutor) Execute(
 	searchCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	items := e.searchMany(searchCtx, provider, queries, maxResults)
+	items := e.searchMany(searchCtx, provider, requests)
 	payload, execErr := buildSearchPayload(items, timeout)
 	if execErr != nil {
 		return tools.ExecutionResult{
@@ -164,6 +287,21 @@ func (e *ToolExecutor) Execute(
 	}
 
 	return tools.ExecutionResult{ResultJSON: payload, DurationMs: durationMs(started)}
+}
+
+func (e *ToolExecutor) parseSearchRequests(args map[string]any) ([]SearchRequest, *tools.ExecutionError) {
+	if parser, ok := e.provider.(RequestParser); ok {
+		return parser.ParseSearchRequests(args)
+	}
+	queries, maxResults, err := parseArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	requests := make([]SearchRequest, 0, len(queries))
+	for _, query := range queries {
+		requests = append(requests, SearchRequest{Query: query, MaxResults: maxResults, Args: args})
+	}
+	return requests, nil
 }
 
 func resultsToJSON(results []Result) []map[string]any {
@@ -352,20 +490,19 @@ type searchJobResult struct {
 func (e *ToolExecutor) searchMany(
 	ctx context.Context,
 	provider Provider,
-	queries []string,
-	maxResults int,
+	requests []SearchRequest,
 ) []searchJobResult {
-	results := make([]searchJobResult, len(queries))
+	results := make([]searchJobResult, len(requests))
 	var wg sync.WaitGroup
-	wg.Add(len(queries))
-	for idx := range queries {
+	wg.Add(len(requests))
+	for idx := range requests {
 		idx := idx
-		query := queries[idx]
+		request := requests[idx]
 		go func() {
 			defer wg.Done()
-			hits, err := provider.Search(ctx, query, maxResults)
+			hits, err := provider.Search(ctx, request)
 			results[idx] = searchJobResult{
-				Query:   query,
+				Query:   request.Query,
 				Results: hits,
 				Err:     err,
 			}
@@ -465,6 +602,9 @@ func searchErrorPayload(query string, err error, timeout time.Duration) map[stri
 		payload["error_class"] = errorSearchFailed
 		payload["message"] = "web_search request failed"
 		payload["status_code"] = httpErr.StatusCode
+		if body := normalizeInlineText(httpErr.Body, 1000); body != "" {
+			payload["response_body"] = body
+		}
 		return payload
 	}
 	payload["error_class"] = errorSearchFailed

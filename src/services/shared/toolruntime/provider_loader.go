@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	sharedoutbound "arkloop/services/shared/outboundurl"
@@ -182,6 +183,11 @@ func evaluateProviderRuntimeStatus(status ProviderRuntimeStatus) (ProviderRuntim
 			return ProviderRuntimeStateMissingConfig, "missing_api_key"
 		}
 		return ProviderRuntimeStateReady, ""
+	case "web_search.exa":
+		if blankPtr(status.APIKeyValue) && strings.TrimSpace(os.Getenv("EXA_API_KEY")) == "" {
+			return ProviderRuntimeStateMissingConfig, "missing_api_key"
+		}
+		return validateOptionalBaseURL(status.BaseURL)
 	case "web_search.searxng":
 		return validateInternalBaseURL(status.BaseURL)
 	case "web_search.basic":
