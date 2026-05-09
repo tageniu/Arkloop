@@ -98,20 +98,12 @@ async function deactivateToolProviderGroup(accessToken: string, groupName: strin
 }
 
 async function applySearchConnector(accessToken: string, search: ConnectorsConfig['search']): Promise<void> {
-  if (search.provider === 'none') {
-    await deactivateToolProviderGroup(accessToken, 'web_search')
-    return
-  }
+  await deactivateToolProviderGroup(accessToken, 'web_search')
   if (search.provider === 'basic') {
-    await deactivateToolProviderGroup(accessToken, 'web_search')
     await activateToolProvider(accessToken, 'web_search', 'web_search.basic')
     return
   }
   if (search.provider === 'tavily') {
-    if (!search.tavilyApiKeyStored && !search.tavilyApiKey?.trim()) {
-      throw new Error('missing tavily api key')
-    }
-    await deactivateToolProviderGroup(accessToken, 'web_search')
     await activateToolProvider(accessToken, 'web_search', 'web_search.tavily')
     if (!search.tavilyApiKeyStored) {
       await updateToolProviderCredential(accessToken, 'web_search', 'web_search.tavily', {
@@ -121,10 +113,6 @@ async function applySearchConnector(accessToken: string, search: ConnectorsConfi
     return
   }
   if (search.provider === 'exa') {
-    if (!search.exaApiKeyStored && !search.exaApiKey?.trim()) {
-      throw new Error('missing exa api key')
-    }
-    await deactivateToolProviderGroup(accessToken, 'web_search')
     await activateToolProvider(accessToken, 'web_search', 'web_search.exa')
     const baseUrl = search.exaBaseUrl?.trim() ? search.exaBaseUrl : null
     if (!search.exaApiKeyStored) {
@@ -140,7 +128,6 @@ async function applySearchConnector(accessToken: string, search: ConnectorsConfi
     return
   }
   if (search.provider === 'searxng') {
-    await deactivateToolProviderGroup(accessToken, 'web_search')
     await activateToolProvider(accessToken, 'web_search', 'web_search.searxng')
     await updateToolProviderCredential(accessToken, 'web_search', 'web_search.searxng', {
       base_url: search.searxngBaseUrl ?? '',
