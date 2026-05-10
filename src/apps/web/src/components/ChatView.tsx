@@ -66,7 +66,7 @@ import { buildResolvedPool, EMPTY_POOL, buildFallbackSegments } from '../copSubS
 import { applyAgentEventToWebSearchSteps } from '../webSearchTimelineFromAgentEvent'
 import { useLocale } from '../contexts/LocaleContext'
 import { useAuth } from '../contexts/auth'
-import { useThreadList } from '../contexts/thread-list'
+import { useThreadList, useThreadLiveState } from '../contexts/thread-list'
 import { useAppModeUI, useRightPanelActions, useSettingsUI, useTitleBarRightPanelUI } from '../contexts/app-ui'
 import { useChatSession } from '../contexts/chat-session'
 import { useMessageStore } from '../contexts/message-store'
@@ -840,9 +840,9 @@ export const ChatView = memo(function ChatView() {
     threads, addThread: onThreadCreated,
     upsertThread: onThreadUpserted,
     markRunning: onRunStarted, markIdle: onRunEnded,
-    completedUnreadThreadIds,
     markCompletionRead,
   } = useThreadList()
+  const { completedUnreadThreadIds } = useThreadLiveState()
   const { appMode } = useAppModeUI()
   const { setRightPanelOpen } = useRightPanelActions()
   const { setTitleBarRightPanelClick } = useTitleBarRightPanelUI()

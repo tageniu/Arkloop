@@ -787,8 +787,6 @@ function OutletShell({ context }: { context: LegacyOutletContext }) {
 
   const threadListValue: ThreadListContextValue = {
     threads: context.threads,
-    runningThreadIds: new Set(),
-    completedUnreadThreadIds: new Set(),
     privateThreadIds: context.privateThreadIds,
     isPrivateMode: context.isPrivateMode,
     pendingIncognitoMode: false,
