@@ -744,8 +744,7 @@ export function useScrollPin(options: UseScrollPinOptions = {}): ScrollPinResult
     viewportAnchorRef.current = null
     clearBottomScrollFrame()
     bottomSmoothScrollPendingRef.current = shouldAnimate
-
-    const doScroll = () => {
+    bottomScrollFrameRef.current = requestAnimationFrame(() => {
       bottomScrollFrameRef.current = null
       if (shouldAnimate) {
         animateBottomIntoPlace()
@@ -754,17 +753,6 @@ export function useScrollPin(options: UseScrollPinOptions = {}): ScrollPinResult
         scrollViewportToBottom('instant')
       }
       setAtBottomState(true)
-    }
-
-    // Try sync — async handlers flush state so DOM may already be ready
-    const container = scrollContainerRef.current
-    if (container && bottomRef.current) {
-      doScroll()
-      return
-    }
-
-    bottomScrollFrameRef.current = requestAnimationFrame(() => {
-      doScroll()
     })
   }, [animateBottomIntoPlace, clearBottomScrollFrame, collapseSpacer, scrollViewportToBottom, setAtBottomState])
 
@@ -784,11 +772,23 @@ export function useScrollPin(options: UseScrollPinOptions = {}): ScrollPinResult
     followLiveOutputRef.current = false
     viewportAnchorRef.current = null
     setAtBottomState(true)
-
-    const tryActivate = (): boolean => {
-      if (!anchorActivationPendingRef.current) return true
+    const finishActivation = (remainingFrames: number) => {
+      if (!anchorActivationPendingRef.current) return
       const turn = lastUserMsgRef.current
-      if (!turn) return false
+      if (!turn) {
+        if (remainingFrames > 0) {
+          requestAnimationFrame(() => finishActivation(remainingFrames - 1))
+          return
+        }
+        anchorActivationPendingRef.current = false
+        isAnchoredRef.current = false
+        userScrolledUpRef.current = false
+        spacerRatchetRef.current = 0
+        followLiveOutputRef.current = false
+        viewportAnchorRef.current = null
+        syncBottomStateFromContainer()
+        return
+      }
 
       anchorActivationPendingRef.current = false
       isAnchoredRef.current = true
@@ -800,29 +800,11 @@ export function useScrollPin(options: UseScrollPinOptions = {}): ScrollPinResult
 
       recalcSpacer()
       animateAnchorIntoPlace()
-      return true
     }
 
-    // After an async handler (e.g. handleSend after createMessage), React 18
-    // flushes state synchronously so the DOM is already committed. Try sync first.
-    if (tryActivate()) return
-
-    // Fallback: poll until the turn element appears in the DOM.
-    const poll = (remainingFrames: number) => {
-      if (tryActivate()) return
-      if (remainingFrames > 0) {
-        requestAnimationFrame(() => poll(remainingFrames - 1))
-        return
-      }
-      anchorActivationPendingRef.current = false
-      isAnchoredRef.current = false
-      userScrolledUpRef.current = false
-      spacerRatchetRef.current = 0
-      followLiveOutputRef.current = false
-      viewportAnchorRef.current = null
-      syncBottomStateFromContainer()
-    }
-    requestAnimationFrame(() => poll(6))
+    // Single rAF lets React commit the DOM from setMessages before we read the turn ref.
+    // Avoids anchoring to a stale element that would collapse into an instant jump.
+    requestAnimationFrame(() => finishActivation(6))
   }, [animateAnchorIntoPlace, clearBottomScrollFrame, clearBottomSmoothScrollMonitor, promptPinningDisabled, recalcSpacer, scrollToBottom, setAtBottomState, syncBottomStateFromContainer])
 
   const stickToBottomAfterLayoutScroll = useCallback((container: HTMLDivElement) => {
