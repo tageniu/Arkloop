@@ -1,20 +1,34 @@
 import type { KeyboardEvent, ReactNode } from 'react'
 import { SettingsSwitch } from './_SettingsSwitch'
 
+/** 与 ProvidersSettings 列表区一致：一行两列、窄屏单列 */
+export const SETTINGS_TWO_COLUMN_GRID_CLASS = 'grid gap-3 sm:grid-cols-2'
+
+/** 与 PluginsSettings PluginListRow 单项外壳一致 */
+export const SETTINGS_STANDALONE_LIST_CARD_CLASS =
+  'overflow-hidden rounded-xl border border-[var(--c-border-subtle)] bg-[var(--c-bg-menu)] transition-colors duration-[140ms] hover:bg-[var(--c-bg-deep)]'
+
 export function SettingsPage({
   title,
+  description,
   children,
   className = 'max-w-[760px]',
 }: {
   title: string
+  description?: ReactNode
   children: ReactNode
   className?: string
 }) {
   return (
     <div className={`mx-auto flex w-full flex-col gap-6 px-1 pb-8 ${className}`}>
-      <h2 className="text-[24px] font-semibold leading-tight tracking-normal text-[var(--c-text-heading)]">
-        {title}
-      </h2>
+      <header className="flex flex-col gap-1">
+        <h2 className="text-[24px] font-semibold leading-tight tracking-normal text-[var(--c-text-heading)]">
+          {title}
+        </h2>
+        {description ? (
+          <p className="max-w-[560px] text-[13px] leading-5 text-[var(--c-text-secondary)]">{description}</p>
+        ) : null}
+      </header>
       {children}
     </div>
   )
@@ -35,12 +49,21 @@ export function SettingsGroup({
   )
 }
 
+/** 描边、圆角、背景（不裁切，供卡片内浮层使用） */
+export const SETTINGS_CARD_SURFACE_BASE =
+  'rounded-xl border border-[var(--c-border-subtle)] bg-[var(--c-bg-menu)]'
+
+/** 与 General / SettingsCard 白卡片一致；默认裁切以贴合圆角 */
+export const SETTINGS_CARD_SURFACE_CLASS = `${SETTINGS_CARD_SURFACE_BASE} overflow-hidden`
+
+/** 技能卡等：保留圆角描边，但不裁切内部下拉，避免 ⋯ 菜单被切掉 */
+export const SETTINGS_CARD_SURFACE_OVERFLOW_VISIBLE_CLASS = `${SETTINGS_CARD_SURFACE_BASE} overflow-visible`
+
+/** SettingsRow 同类分割线：不贴卡片左右边 */
+export const SETTINGS_CARD_INSET_RULE_CLASS = 'mx-5 h-px shrink-0 bg-[var(--c-border-subtle)]'
+
 export function SettingsCard({ children }: { children: ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-[var(--c-border-subtle)] bg-[var(--c-bg-menu)]">
-      {children}
-    </div>
-  )
+  return <div className={SETTINGS_CARD_SURFACE_CLASS}>{children}</div>
 }
 
 export function SettingsRow({

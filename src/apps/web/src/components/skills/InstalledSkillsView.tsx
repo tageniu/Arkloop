@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, FolderOpen, Loader2, Plus, Trash2 } from 'lu
 import { discoverExternalSkills, getExternalDirs, setExternalDirs, type ExternalSkillDir } from '../../api'
 import type { ViewSkill } from './types'
 import { SkillList } from './SkillList'
+import { SettingsGroup } from '../settings/_SettingsLayout'
 import { secondaryButtonBorderStyle, secondaryButtonXsCls } from '../buttonStyles'
 
 type SkillTextSubset = {
@@ -133,37 +134,32 @@ export function InstalledSkillsView(props: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium text-[var(--c-text-tertiary)]">
-        {skillText.searchResults(items.length)}
-      </span>
-
-      <SkillList
-        items={items}
-        loading={loading}
-        viewMode="installed"
-        busySkillId={busySkillId}
-        menuSkillId={menuSkillId}
-        setMenuSkillId={setMenuSkillId}
-        onDetailSkill={onDetailSkill}
-        onEnable={onEnable}
-        onDisable={onDisable}
-        onRemove={onRemove}
-        onTrySkill={onTrySkill}
-        skillText={skillText}
-        locale={locale}
-        platformAvailabilityLabel={platformAvailabilityLabel}
-        platformAvailabilityStyle={platformAvailabilityStyle}
-        scanStatusBadge={scanStatusBadge}
-        active={active}
-        cardMenuRef={cardMenuRef}
-      />
+    <div className="flex flex-col gap-6">
+      <SettingsGroup title={skillText.searchResults(items.length)}>
+        <SkillList
+          items={items}
+          loading={loading}
+          viewMode="installed"
+          busySkillId={busySkillId}
+          menuSkillId={menuSkillId}
+          setMenuSkillId={setMenuSkillId}
+          onDetailSkill={onDetailSkill}
+          onEnable={onEnable}
+          onDisable={onDisable}
+          onRemove={onRemove}
+          onTrySkill={onTrySkill}
+          skillText={skillText}
+          locale={locale}
+          platformAvailabilityLabel={platformAvailabilityLabel}
+          platformAvailabilityStyle={platformAvailabilityStyle}
+          scanStatusBadge={scanStatusBadge}
+          active={active}
+          cardMenuRef={cardMenuRef}
+        />
+      </SettingsGroup>
 
       {/* external skills collapsible section */}
-      <div
-        className="mt-2 rounded-xl overflow-hidden"
-        style={{ border: '0.5px solid var(--c-border-subtle)' }}
-      >
+      <div className="overflow-hidden rounded-xl border border-[var(--c-border-subtle)] bg-[var(--c-bg-menu)]">
         <button
           type="button"
           className="flex w-full items-center gap-2 p-3 text-left select-none transition-colors bg-[var(--c-bg-menu)] hover:bg-[var(--c-bg-deep)]"

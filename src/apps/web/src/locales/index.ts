@@ -265,6 +265,8 @@ export interface LocaleStrings {
     detailUpdatedAt: string;
     detailDescription: string;
     noDescription: string;
+    removeConfirmTitle: string;
+    removeConfirmBody: (displayName: string, skillKey: string, version: string) => string;
     installedTab: string;
     marketplaceTab: string;
     builtinTab: string;
@@ -1020,6 +1022,7 @@ export interface LocaleStrings {
     connectorsDesc: string;
     pluginsTitle: string;
     pluginsDesc: string;
+    skillsTitle: string;
     pluginsPage: {
       installedTab: string;
       marketplaceTab: string;

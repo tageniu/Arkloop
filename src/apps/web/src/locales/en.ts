@@ -243,6 +243,9 @@ export const en: LocaleStrings = {
     detailUpdatedAt: "Updated",
     detailDescription: "Description",
     noDescription: "No description yet",
+    removeConfirmTitle: "Delete this skill?",
+    removeConfirmBody: (displayName: string, skillKey: string, version: string) =>
+      `This removes "${displayName}" (${skillKey} v${version}) from this account. This cannot be undone.`,
     installedTab: "Installed",
     marketplaceTab: "Marketplace",
     builtinTab: "Built-in",
@@ -997,6 +1000,7 @@ export const en: LocaleStrings = {
     personas: "Personas",
     channels: "Channels",
     plugins: "Plugins",
+    skillsTitle: "Skills",
     skills: "Skill",
     mcp: "MCP",
     connectors: "Connectors",
