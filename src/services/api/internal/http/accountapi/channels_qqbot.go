@@ -438,168 +438,42 @@ func (c qqbotConnector) HandleMessage(ctx context.Context, traceID string, ch da
 	}
 
 	// 处理需要 persona 和 threadID 的命令（/model、/think、/heartbeat、/new、/stop）
-	if strings.HasPrefix(text, "/") {
-		cmd, cmdOK := telegramCommandBase(text, "")
-		if cmdOK {
-			switch {
-			case cmd == "/model" || strings.HasPrefix(cmd, "/think"):
-				replyText, _, err := handleTelegramPreferenceCommand(ctx, tx, ch.AccountID, threadID, text, nil)
-				if err != nil {
-					return err
-				}
-				if err := tx.Commit(ctx); err != nil {
-					return err
-				}
-				replyScope := qqbotclient.ScopeC2C
-				if conversationType == "group" {
-					replyScope = qqbotclient.ScopeGroup
-				}
-				c.sendTextReply(ctx, replyScope, platformChatID, replyText, messageID)
-				return nil
-
-			case cmd == "/heartbeat" || strings.HasPrefix(cmd, "/heartbeat"):
-				heartbeatIdentity := identity
+	cmdText := text
+	handled, replyText, _, err = DispatchChannelCommand(
+		ctx, tx, ch, *persona, identity,
+		cmdText, conversationType == "private", platformChatID,
+		cfg.DefaultModel,
+		ChannelCommandResolver{
+			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
+				return c.resolveThreadID(ctx, tx, ch, personaID, projectID, identity, isPrivate, chatID, displayName)
+			},
+			ResolveHeartbeatIdentity: func(ctx context.Context, tx pgx.Tx) (*data.ChannelIdentity, error) {
 				if conversationType == "group" {
 					gi, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, "qqbot", platformChatID, nil, nil, nil)
 					if err != nil {
-						return err
+						return nil, err
 					}
-					heartbeatIdentity = gi
+					return &gi, nil
 				}
-				replyText, err := handleTelegramHeartbeatCommand(
-					ctx, tx,
-					ch.ID, ch.AccountID, ch.PersonaID,
-					cfg.DefaultModel,
-					threadID,
-					heartbeatIdentity,
-					text,
-					c.channelIdentitiesRepo,
-					c.personasRepo,
-					nil,
-				)
-				if err != nil {
-					return err
-				}
-				if err := tx.Commit(ctx); err != nil {
-					return err
-				}
-				replyScope := qqbotclient.ScopeC2C
-				if conversationType == "group" {
-					replyScope = qqbotclient.ScopeGroup
-				}
-				c.sendTextReply(ctx, replyScope, platformChatID, replyText, messageID)
-				return nil
-
-			case cmd == "/new":
-				if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-					if err := tx.Commit(ctx); err != nil {
-						return err
-					}
-					replyScope := qqbotclient.ScopeC2C
-					if conversationType == "group" {
-						replyScope = qqbotclient.ScopeGroup
-					}
-					c.sendTextReply(ctx, replyScope, platformChatID, "当前会话未配置 persona。", messageID)
-					return nil
-				}
-				if conversationType == "private" {
-					if err := c.channelDMThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, identity.ID, *ch.PersonaID, ""); err != nil {
-						return err
-					}
-				} else {
-					if err := c.channelGroupThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID); err != nil {
-						return err
-					}
-				}
-				if err := tx.Commit(ctx); err != nil {
-					return err
-				}
-				replyScope := qqbotclient.ScopeC2C
-				if conversationType == "group" {
-					replyScope = qqbotclient.ScopeGroup
-				}
-				c.sendTextReply(ctx, replyScope, platformChatID, "已开启新会话。", messageID)
-				return nil
-
-			case cmd == "/stop":
-				if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-					if err := tx.Commit(ctx); err != nil {
-						return err
-					}
-					replyScope := qqbotclient.ScopeC2C
-					if conversationType == "group" {
-						replyScope = qqbotclient.ScopeGroup
-					}
-					c.sendTextReply(ctx, replyScope, platformChatID, "当前没有运行中的任务。", messageID)
-					return nil
-				}
-				if conversationType == "private" {
-					dmThread, err := c.channelDMThreadsRepo.WithTx(tx).GetByBinding(ctx, ch.ID, identity.ID, *ch.PersonaID, "")
-					if err != nil {
-						return err
-					}
-					if dmThread == nil {
-						if err := tx.Commit(ctx); err != nil {
-							return err
-						}
-						c.sendTextReply(ctx, qqbotclient.ScopeC2C, platformChatID, "当前没有运行中的任务。", messageID)
-						return nil
-					}
-					activeRun, err := c.runEventRepo.GetActiveRootRunForThread(ctx, dmThread.ThreadID)
-					if err != nil {
-						return err
-					}
-					if activeRun == nil {
-						if err := tx.Commit(ctx); err != nil {
-							return err
-						}
-						c.sendTextReply(ctx, qqbotclient.ScopeC2C, platformChatID, "当前没有运行中的任务。", messageID)
-						return nil
-					}
-					if _, err := c.runEventRepo.WithTx(tx).RequestCancel(ctx, activeRun.ID, identity.UserID, traceID, 0, nil); err != nil {
-						return err
-					}
-					if err := tx.Commit(ctx); err != nil {
-						return err
-					}
-					_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, activeRun.ID.String())
-					c.sendTextReply(ctx, qqbotclient.ScopeC2C, platformChatID, "已请求停止当前任务。", messageID)
-					return nil
-				}
-				// 群聊
-				groupThread, err := c.channelGroupThreadsRepo.WithTx(tx).GetByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID)
-				if err != nil {
-					return err
-				}
-				if groupThread == nil {
-					if err := tx.Commit(ctx); err != nil {
-						return err
-					}
-					c.sendTextReply(ctx, qqbotclient.ScopeGroup, platformChatID, "当前没有运行中的任务。", messageID)
-					return nil
-				}
-				activeRun, err := c.runEventRepo.GetActiveRootRunForThread(ctx, groupThread.ThreadID)
-				if err != nil {
-					return err
-				}
-				if activeRun == nil {
-					if err := tx.Commit(ctx); err != nil {
-						return err
-					}
-					c.sendTextReply(ctx, qqbotclient.ScopeGroup, platformChatID, "当前没有运行中的任务。", messageID)
-					return nil
-				}
-				if _, err := c.runEventRepo.WithTx(tx).RequestCancel(ctx, activeRun.ID, identity.UserID, traceID, 0, nil); err != nil {
-					return err
-				}
-				if err := tx.Commit(ctx); err != nil {
-					return err
-				}
-				_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, activeRun.ID.String())
-				c.sendTextReply(ctx, qqbotclient.ScopeGroup, platformChatID, "已请求停止当前任务。", messageID)
-				return nil
-			}
+				return nil, nil
+			},
+		},
+		c.channelIdentitiesRepo, c.channelDMThreadsRepo, c.channelGroupThreadsRepo,
+		c.personasRepo, c.runEventRepo,
+	)
+	if err != nil {
+		return err
+	}
+	if handled {
+		if err := tx.Commit(ctx); err != nil {
+			return err
 		}
+		replyScope := qqbotclient.ScopeC2C
+		if conversationType == "group" {
+			replyScope = qqbotclient.ScopeGroup
+		}
+		c.sendTextReply(ctx, replyScope, platformChatID, replyText, messageID)
+		return nil
 	}
 
 	projection := buildQQBotEnvelopeText(identity.ID, displayName, conversationType, text, msg.Timestamp, senderID, messageID)

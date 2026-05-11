@@ -166,30 +166,34 @@ func (c *weixinConnector) HandleWeChatMessage(ctx context.Context, traceID strin
 		CommandText:      text,
 	}
 
-	// 命令处理：/model /think /heartbeat
-	if cmd, cmdOK := telegramCommandBase(incoming.CommandText, ""); cmdOK {
-		if cmd == "/model" || strings.HasPrefix(cmd, "/think") || strings.HasPrefix(cmd, "/heartbeat") {
-			threadID, err := c.resolveWeixinCommandThreadID(ctx, tx, ch, persona, identity, isPrivate, platformChatID)
-			if err != nil {
-				return err
-			}
-			var replyText string
-			var cmdErr error
-			switch {
-			case cmd == "/model" || strings.HasPrefix(cmd, "/think"):
-				replyText, _, cmdErr = handleTelegramPreferenceCommand(ctx, tx, ch.AccountID, threadID, incoming.CommandText, nil)
-			case strings.HasPrefix(cmd, "/heartbeat"):
-				replyText, cmdErr = handleTelegramHeartbeatCommand(ctx, tx, ch.ID, ch.AccountID, ch.PersonaID, cfg.DefaultModel, threadID, identity, incoming.CommandText, c.channelIdentitiesRepo, c.personasRepo, nil)
-			}
-			if cmdErr != nil {
-				return cmdErr
-			}
-			if err := commitTx(); err != nil {
-				return err
-			}
-			c.sendWeixinReply(ctx, msg, replyText)
-			return nil
+	// 命令处理：/model /think /heartbeat /new /stop
+	cmdText := incoming.CommandText
+	if handled, replyText, _, err := DispatchChannelCommand(
+		ctx, tx, ch, *persona, identity,
+		cmdText, isPrivate, platformChatID,
+		cfg.DefaultModel,
+		ChannelCommandResolver{
+			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
+				return c.resolveWeixinThreadID(ctx, tx, ch, personaID, projectID, identity, isPrivate, chatID)
+			},
+			ResolveHeartbeatIdentity: func(ctx context.Context, tx pgx.Tx) (*data.ChannelIdentity, error) {
+				gi, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, ch.ChannelType, platformChatID, nil, nil, nil)
+				if err != nil {
+					return nil, err
+				}
+				return &gi, nil
+			},
+		},
+		c.channelIdentitiesRepo, c.channelDMThreadsRepo, c.channelGroupThreadsRepo,
+		c.personasRepo, c.runEventRepo,
+	); err != nil {
+		return err
+	} else if handled {
+		if err := commitTx(); err != nil {
+			return err
 		}
+		c.sendWeixinReply(ctx, msg, replyText)
+		return nil
 	}
 
 	dispatchResult, accepted, err := DispatchInboundImmediate(ctx, tx, InboundImmediatePipelineRequest{
@@ -408,38 +412,6 @@ func (c *weixinConnector) notifyInput(ctx context.Context, runID uuid.UUID) {
 		return
 	}
 	c.inputNotify(ctx, runID)
-}
-
-// --- command helpers ---
-
-// resolveWeixinCommandThreadID 为命令处理解析 threadID。
-func (c *weixinConnector) resolveWeixinCommandThreadID(
-	ctx context.Context, tx pgx.Tx, ch data.Channel,
-	persona *data.Persona, identity data.ChannelIdentity,
-	isPrivate bool, platformChatID string,
-) (uuid.UUID, error) {
-	if persona == nil || persona.ID == uuid.Nil {
-		return uuid.Nil, nil
-	}
-	threadProjectID := derefUUID(persona.ProjectID)
-	if threadProjectID == uuid.Nil {
-		ownerUserID := uuid.Nil
-		if ch.OwnerUserID != nil {
-			ownerUserID = *ch.OwnerUserID
-		}
-		if ownerUserID == uuid.Nil && identity.UserID != nil {
-			ownerUserID = *identity.UserID
-		}
-		if ownerUserID != uuid.Nil {
-			if pid, err := c.personasRepo.GetOrCreateDefaultProjectIDByOwner(ctx, ch.AccountID, ownerUserID); err == nil {
-				threadProjectID = pid
-			}
-		}
-	}
-	if threadProjectID == uuid.Nil {
-		return uuid.Nil, fmt.Errorf("cannot resolve project for persona %s", persona.ID)
-	}
-	return c.resolveWeixinThreadID(ctx, tx, ch, persona.ID, threadProjectID, identity, isPrivate, platformChatID)
 }
 
 // sendWeixinReply 通过 iLink API 发送文本回复（best-effort，commit 后调用）。

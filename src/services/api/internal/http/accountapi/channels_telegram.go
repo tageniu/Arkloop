@@ -1953,11 +1953,7 @@ func handleTelegramCommand(
 		}
 		rows = append(rows, []telegrambot.InlineKeyboardButton{{Text: "✕", CallbackData: "dismiss"}})
 		return true, header, &telegrambot.InlineKeyboardMarkup{InlineKeyboard: rows}, nil
-	case "/model":
-		allowUserScoped, err := resolveTelegramByokEnabled(ctx, entSvc, accountID)
-		if err != nil {
-			return true, "", nil, err
-		}
+	case "/model", "/think":
 		threadID, hasThread, err := resolveTelegramCommandThreadID(ctx, tx, channel, identity, platformThreadID, channelDMThreadsRepo, threadRepo, personasRepo)
 		if err != nil {
 			return true, "", nil, err
@@ -1965,79 +1961,15 @@ func handleTelegramCommand(
 		if !hasThread {
 			return true, "当前会话未配置 persona。", nil, nil
 		}
-		preferredModel, reasoningMode, _, err := getInboundThreadModelPreference(ctx, tx, threadID)
+		replyText, prefResult, err := handleTelegramPreferenceCommand(ctx, tx, accountID, threadID, text, entSvc)
 		if err != nil {
 			return true, "", nil, err
 		}
-		if len(parts) < 2 {
-			candidates, err := loadTelegramSelectorCandidates(ctx, tx, accountID)
-			if err != nil {
-				return true, "", nil, err
-			}
-			var rows [][]telegrambot.InlineKeyboardButton
-			for _, c := range candidates {
-				if !c.accountScoped && !allowUserScoped {
-					continue
-				}
-				label := c.model
-				if strings.EqualFold(strings.TrimSpace(c.model), strings.TrimSpace(preferredModel)) {
-					label = c.model + " ✓"
-				}
-				rows = append(rows, []telegrambot.InlineKeyboardButton{{
-					Text:         label,
-					CallbackData: "model:" + c.model,
-				}})
-			}
-			rows = append(rows, []telegrambot.InlineKeyboardButton{{Text: "✕", CallbackData: "dismiss"}})
-			header := "Choose model.\nCurrent: follow channel default"
-			if strings.TrimSpace(preferredModel) != "" {
-				header = "Choose model.\nCurrent: " + preferredModel
-			}
-			var markup *telegrambot.InlineKeyboardMarkup
-			if len(rows) > 0 {
-				rows = append(rows, []telegrambot.InlineKeyboardButton{{Text: "✕", CallbackData: "dismiss"}})
-				markup = &telegrambot.InlineKeyboardMarkup{InlineKeyboard: rows}
-			}
-			return true, header, markup, nil
+		var markup *telegrambot.InlineKeyboardMarkup
+		if prefResult != nil {
+			markup = buildPreferenceKeyboard(prefResult)
 		}
-		newModel := strings.TrimSpace(parts[1])
-		if err := validateTelegramModelSelector(ctx, tx, accountID, newModel, allowUserScoped); err != nil {
-			return true, fmt.Sprintf("模型选择器无效：%s", newModel), nil, nil
-		}
-		if err := updateInboundThreadModelPreference(ctx, tx, threadID, newModel, reasoningMode); err != nil {
-			return true, "", nil, err
-		}
-		return true, "model → " + newModel, nil, nil
-	case "/think":
-		threadID, hasThread, err := resolveTelegramCommandThreadID(ctx, tx, channel, identity, platformThreadID, channelDMThreadsRepo, threadRepo, personasRepo)
-		if err != nil {
-			return true, "", nil, err
-		}
-		if !hasThread {
-			return true, "当前会话未配置 persona。", nil, nil
-		}
-		preferredModel, reasoningMode, _, err := getInboundThreadModelPreference(ctx, tx, threadID)
-		if err != nil {
-			return true, "", nil, err
-		}
-		if len(parts) < 2 {
-			display := reasoningMode
-			if display == "" {
-				display = "off"
-			}
-			markup := buildThinkKeyboard(display)
-			header := fmt.Sprintf("Choose level for /think.\nCurrent: %s\nOptions: off, minimal, low, medium, high, max.", display)
-			return true, header, markup, nil
-		}
-		newMode := strings.TrimSpace(parts[1])
-		validModes := map[string]bool{"off": true, "minimal": true, "low": true, "medium": true, "high": true, "max": true}
-		if !validModes[newMode] {
-			return true, "可用档位：off、minimal、low、medium、high、max", nil, nil
-		}
-		if err := updateInboundThreadModelPreference(ctx, tx, threadID, preferredModel, newMode); err != nil {
-			return true, "", nil, err
-		}
-		return true, "think → " + newMode, nil, nil
+		return true, replyText, markup, nil
 	default:
 		return false, "", nil, nil
 	}
@@ -2419,33 +2351,52 @@ func (c telegramConnector) HandleUpdateForPoll(
 	return nil
 }
 
-// buildThinkKeyboard 构建 /think 按钮键盘，当前档位标 ✓。
-func buildThinkKeyboard(currentMode string) *telegrambot.InlineKeyboardMarkup {
-	modes := []string{"off", "minimal", "low", "medium", "high", "max"}
+// buildPreferenceKeyboard converts a PreferenceResult into a Telegram inline keyboard.
+// Used by both DM and group command handlers to render /model and /think picks.
+func buildPreferenceKeyboard(pref *PreferenceResult) *telegrambot.InlineKeyboardMarkup {
+	if pref == nil {
+		return nil
+	}
 	var rows [][]telegrambot.InlineKeyboardButton
-	var row []telegrambot.InlineKeyboardButton
-	for _, mode := range modes {
-		label := mode
-		if mode == currentMode {
-			label = mode + " ✓"
-		}
-		row = append(row, telegrambot.InlineKeyboardButton{
-			Text:         label,
-			CallbackData: "think:" + mode,
-		})
-		if len(row) == 2 {
-			rows = append(rows, row)
-			row = nil
+
+	// /model keyboard
+	if len(pref.AvailableModels) > 0 {
+		for _, m := range pref.AvailableModels {
+			label := m.Model
+			if m.IsSelected {
+				label = m.Model + " ✓"
+			}
+			rows = append(rows, []telegrambot.InlineKeyboardButton{{
+				Text:         label,
+				CallbackData: "model:" + m.Model,
+			}})
 		}
 	}
-	if len(row) > 0 {
-		rows = append(rows, row)
+
+	// /think keyboard
+	if pref.ThinkingMode != "" {
+		modes := []string{"off", "minimal", "low", "medium", "high", "max"}
+		for _, mode := range modes {
+			label := mode
+			if mode == pref.ThinkingMode {
+				label = mode + " ✓"
+			}
+			rows = append(rows, []telegrambot.InlineKeyboardButton{{
+				Text:         label,
+				CallbackData: "think:" + mode,
+			}})
+		}
+	}
+
+	if len(rows) == 0 {
+		return nil
 	}
 	rows = append(rows, []telegrambot.InlineKeyboardButton{{Text: "✕", CallbackData: "dismiss"}})
 	return &telegrambot.InlineKeyboardMarkup{InlineKeyboard: rows}
 }
 
 // handleTelegramPreferenceCommand 处理 /model 和 /think 偏好命令（群聊和私聊均可用）。
+// 返回 PreferenceResult 而非通道特定类型，由调用方负责转换为通道特定 UI。
 func handleTelegramPreferenceCommand(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -2453,7 +2404,7 @@ func handleTelegramPreferenceCommand(
 	threadID uuid.UUID,
 	rawText string,
 	entSvc *entitlement.Service,
-) (string, *telegrambot.InlineKeyboardMarkup, error) {
+) (string, *PreferenceResult, error) {
 	parts := strings.Fields(rawText)
 	if len(parts) == 0 {
 		return "", nil, nil
@@ -2477,30 +2428,25 @@ func handleTelegramPreferenceCommand(
 			if err != nil {
 				return "", nil, err
 			}
-			var rows [][]telegrambot.InlineKeyboardButton
+			var modelOpts []ModelOption
 			for _, c := range candidates {
 				if !c.accountScoped && !allowUserScoped {
 					continue
 				}
-				label := c.model
-				if strings.EqualFold(strings.TrimSpace(c.model), strings.TrimSpace(preferredModel)) {
-					label = c.model + " ✓"
-				}
-				rows = append(rows, []telegrambot.InlineKeyboardButton{{
-					Text:         label,
-					CallbackData: "model:" + c.model,
-				}})
+				modelOpts = append(modelOpts, ModelOption{
+					Model:      c.model,
+					IsSelected: strings.EqualFold(strings.TrimSpace(c.model), strings.TrimSpace(preferredModel)),
+				})
+			}
+			prefResult := &PreferenceResult{
+				AvailableModels: modelOpts,
+				AllowUserScoped: allowUserScoped,
 			}
 			header := "Choose model.\nCurrent: follow channel default"
 			if strings.TrimSpace(preferredModel) != "" {
 				header = "Choose model.\nCurrent: " + preferredModel
 			}
-			var markup *telegrambot.InlineKeyboardMarkup
-			if len(rows) > 0 {
-				rows = append(rows, []telegrambot.InlineKeyboardButton{{Text: "✕", CallbackData: "dismiss"}})
-				markup = &telegrambot.InlineKeyboardMarkup{InlineKeyboard: rows}
-			}
-			return header, markup, nil
+			return header, prefResult, nil
 		}
 		newModel := strings.TrimSpace(parts[1])
 		if err := validateTelegramModelSelector(ctx, tx, accountID, newModel, allowUserScoped); err != nil {
@@ -2523,9 +2469,9 @@ func handleTelegramPreferenceCommand(
 			if display == "" {
 				display = "off"
 			}
-			markup := buildThinkKeyboard(display)
+			prefResult := &PreferenceResult{ThinkingMode: display}
 			header := fmt.Sprintf("Choose level for /think.\nCurrent: %s\nOptions: off, minimal, low, medium, high, max.", display)
-			return header, markup, nil
+			return header, prefResult, nil
 		}
 		newMode := strings.TrimSpace(parts[1])
 		validModes := map[string]bool{"off": true, "minimal": true, "low": true, "medium": true, "high": true, "max": true}

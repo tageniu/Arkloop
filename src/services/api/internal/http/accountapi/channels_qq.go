@@ -403,109 +403,43 @@ func (c *qqConnector) HandleEvent(ctx context.Context, traceID string, ch data.C
 	// --- 群聊命令路径 ---
 	if !isPrivate {
 		cmdText := stripLeadingMention(text)
-		if cmd, ok := telegramCommandBase(cmdText, ""); ok {
-			switch {
-			case cmd == "/new":
-				replyText := c.handleQQGroupNew(ctx, tx, ch, cfg, identity, platformChatID)
-				if err := commitTx(); err != nil {
-					return err
-				}
-				c.sendQQReply(ctx, cfg, "group", platformChatID, replyText)
-				return nil
-
-			case cmd == "/stop":
-				replyText, cancelRunID := c.handleQQGroupStop(ctx, tx, ch, cfg, identity, platformChatID, traceID)
-				if err := commitTx(); err != nil {
-					return err
-				}
-				if cancelRunID != uuid.Nil {
-					_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
-				}
-				c.sendQQReply(ctx, cfg, "group", platformChatID, replyText)
-				return nil
-
-			case strings.HasPrefix(cmd, "/heartbeat"):
-				groupIdentity, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, ch.ChannelType, platformChatID, nil, nil, nil)
-				if err != nil {
-					return err
-				}
-				threadID := uuid.Nil
-				threadProjectID := derefUUID(persona.ProjectID)
-				if threadProjectID == uuid.Nil {
-					ownerUserID := uuid.Nil
-					if ch.OwnerUserID != nil {
-						ownerUserID = *ch.OwnerUserID
-					}
-					if ownerUserID != uuid.Nil {
-						if pid, err := c.personasRepo.GetOrCreateDefaultProjectIDByOwner(ctx, ch.AccountID, ownerUserID); err == nil {
-							threadProjectID = pid
-						}
-					}
-				}
-				if threadProjectID != uuid.Nil {
-					resolvedThreadID, err := c.resolveQQThreadID(ctx, tx, ch, persona.ID, threadProjectID, identity, false, platformChatID, "")
+		handled, replyText, _, err := DispatchChannelCommand(
+			ctx, tx, ch, *persona, identity,
+			cmdText, false, platformChatID,
+			cfg.DefaultModel,
+			ChannelCommandResolver{
+				ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
+					return c.resolveQQThreadID(ctx, tx, ch, personaID, projectID, identity, false, chatID, "")
+				},
+				ResolveHeartbeatIdentity: func(ctx context.Context, tx pgx.Tx) (*data.ChannelIdentity, error) {
+					gi, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, ch.ChannelType, platformChatID, nil, nil, nil)
 					if err != nil {
-						return err
+						return nil, err
 					}
-					threadID = resolvedThreadID
-				}
-				replyText, err := handleTelegramHeartbeatCommand(
-					ctx, tx,
-					ch.ID, ch.AccountID, ch.PersonaID,
-					cfg.DefaultModel,
-					threadID,
-					groupIdentity,
-					cmdText,
-					c.channelIdentitiesRepo,
-					c.personasRepo,
-					nil,
-				)
-				if err != nil {
-					return err
-				}
-				if err := commitTx(); err != nil {
-					return err
-				}
+					return &gi, nil
+				},
+				IsGroupAdmin: func(ctx context.Context) bool {
+					return c.isQQGroupAdmin(ctx, cfg, platformChatID, identity.PlatformSubjectID)
+				},
+			},
+			c.channelIdentitiesRepo, c.channelDMThreadsRepo, c.channelGroupThreadsRepo,
+			c.personasRepo, c.runEventRepo,
+		)
+		if err != nil {
+			return err
+		}
+		if handled {
+			if err := commitTx(); err != nil {
+				return err
+			}
+			if strings.HasPrefix(cmdText, "/heartbeat") {
 				pendingHeartbeatNotify = false
 				if c.bus != nil {
 					_ = c.bus.Publish(ctx, pgnotify.ChannelHeartbeat, "")
 				}
-				c.sendQQReply(ctx, cfg, "group", platformChatID, replyText)
-				return nil
-
-			case cmd == "/model" || strings.HasPrefix(cmd, "/think"):
-				threadID := uuid.Nil
-				threadProjectID := derefUUID(persona.ProjectID)
-				if threadProjectID == uuid.Nil {
-					ownerUserID := uuid.Nil
-					if ch.OwnerUserID != nil {
-						ownerUserID = *ch.OwnerUserID
-					}
-					if ownerUserID != uuid.Nil {
-						if pid, err := c.personasRepo.GetOrCreateDefaultProjectIDByOwner(ctx, ch.AccountID, ownerUserID); err == nil {
-							threadProjectID = pid
-						}
-					}
-				}
-				if threadProjectID != uuid.Nil {
-					resolvedThreadID, err := c.resolveQQThreadID(ctx, tx, ch, persona.ID, threadProjectID, identity, false, platformChatID, "")
-					if err != nil {
-						return err
-					}
-					threadID = resolvedThreadID
-				}
-				replyText, _, err := handleTelegramPreferenceCommand(
-					ctx, tx, ch.AccountID, threadID, cmdText, nil,
-				)
-				if err != nil {
-					return err
-				}
-				if err := commitTx(); err != nil {
-					return err
-				}
-				c.sendQQReply(ctx, cfg, "group", platformChatID, replyText)
-				return nil
 			}
+			c.sendQQReply(ctx, cfg, "group", platformChatID, replyText)
+			return nil
 		}
 	}
 
@@ -654,49 +588,6 @@ func (c *qqConnector) checkReplyToBot(ctx context.Context, cfg qqChannelConfig, 
 }
 
 // --- commands ---
-
-func (c *qqConnector) handleQQGroupNew(
-	ctx context.Context, tx pgx.Tx,
-	ch data.Channel, cfg qqChannelConfig,
-	identity data.ChannelIdentity, platformChatID string,
-) string {
-	if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-		return "当前会话未配置 persona。"
-	}
-	if !c.isQQGroupAdmin(ctx, cfg, platformChatID, identity.PlatformSubjectID) {
-		return "无权限。"
-	}
-	if err := c.channelGroupThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID); err != nil {
-		slog.Warn("qq_group_new_failed", "error", err)
-		return "操作失败。"
-	}
-	return "已开启新会话。"
-}
-
-func (c *qqConnector) handleQQGroupStop(
-	ctx context.Context, tx pgx.Tx,
-	ch data.Channel, cfg qqChannelConfig,
-	identity data.ChannelIdentity, platformChatID, traceID string,
-) (string, uuid.UUID) {
-	if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-		return "当前没有运行中的任务。", uuid.Nil
-	}
-	if !c.isQQGroupAdmin(ctx, cfg, platformChatID, identity.PlatformSubjectID) {
-		return "无权限。", uuid.Nil
-	}
-	threadMap, err := c.channelGroupThreadsRepo.WithTx(tx).GetByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID)
-	if err != nil || threadMap == nil {
-		return "当前没有运行中的任务。", uuid.Nil
-	}
-	activeRun, err := c.runEventRepo.GetActiveRootRunForThread(ctx, threadMap.ThreadID)
-	if err != nil || activeRun == nil {
-		return "当前没有运行中的任务。", uuid.Nil
-	}
-	if _, err := c.runEventRepo.WithTx(tx).RequestCancel(ctx, activeRun.ID, identity.UserID, traceID, 0, nil); err != nil {
-		return "操作失败。", uuid.Nil
-	}
-	return "已请求停止当前任务。", activeRun.ID
-}
 
 // isQQGroupAdmin 通过 OneBot API 校验群管理员权限
 func (c *qqConnector) isQQGroupAdmin(ctx context.Context, cfg qqChannelConfig, groupID, userID string) bool {

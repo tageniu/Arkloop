@@ -935,94 +935,35 @@ func (c *feishuConnector) HandleIncoming(ctx context.Context, traceID string, ch
 	}
 
 	// --- 命令解析 ---
-	if cmd, ok := telegramCommandBase(strings.TrimSpace(incoming.Text), ""); ok {
-		switch {
-		case cmd == "/model" || strings.HasPrefix(cmd, "/think"):
-			threadProjectID := derefUUID(persona.ProjectID)
-			if threadProjectID == uuid.Nil {
-				ownerUserID := uuid.Nil
-				if ch.OwnerUserID != nil {
-					ownerUserID = *ch.OwnerUserID
-				}
-				if ownerUserID == uuid.Nil && identity.UserID != nil {
-					ownerUserID = *identity.UserID
-				}
-				if ownerUserID != uuid.Nil {
-					if pid, err := c.personasRepo.GetOrCreateDefaultProjectIDByOwner(ctx, ch.AccountID, ownerUserID); err == nil {
-						threadProjectID = pid
-					}
-				}
-			}
-			threadID := uuid.Nil
-			if threadProjectID != uuid.Nil {
-				resolvedThreadID, err := c.resolveFeishuThreadID(ctx, tx, ch, persona.ID, threadProjectID, identity, incoming)
+	cmdText := strings.TrimSpace(incoming.Text)
+	handled, replyText, _, err := DispatchChannelCommand(
+		ctx, tx, ch, *persona, identity,
+		cmdText, incoming.ConversationType == "private", incoming.ChatID,
+		cfg.DefaultModel,
+		ChannelCommandResolver{
+			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
+				return c.resolveFeishuThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
+			},
+			ResolveHeartbeatIdentity: func(ctx context.Context, tx pgx.Tx) (*data.ChannelIdentity, error) {
+				gi, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, ch.ChannelType, incoming.ChatID, nil, nil, nil)
 				if err != nil {
-					return err
+					return nil, err
 				}
-				threadID = resolvedThreadID
-			}
-			replyText, _, err := handleTelegramPreferenceCommand(ctx, tx, ch.AccountID, threadID, strings.TrimSpace(incoming.Text), nil)
-			if err != nil {
-				return err
-			}
-			if err := commitTx(); err != nil {
-				return err
-			}
-			if replyText != "" {
-				_ = c.sendFeishuCommandReply(ctx, cfg, ch, incoming, replyText)
-			}
-			return nil
-
-		case strings.HasPrefix(cmd, "/heartbeat"):
-			threadProjectID := derefUUID(persona.ProjectID)
-			if threadProjectID == uuid.Nil {
-				ownerUserID := uuid.Nil
-				if ch.OwnerUserID != nil {
-					ownerUserID = *ch.OwnerUserID
-				}
-				if ownerUserID == uuid.Nil && identity.UserID != nil {
-					ownerUserID = *identity.UserID
-				}
-				if ownerUserID != uuid.Nil {
-					if pid, err := c.personasRepo.GetOrCreateDefaultProjectIDByOwner(ctx, ch.AccountID, ownerUserID); err == nil {
-						threadProjectID = pid
-					}
-				}
-			}
-			threadID := uuid.Nil
-			if threadProjectID != uuid.Nil {
-				resolvedThreadID, err := c.resolveFeishuThreadID(ctx, tx, ch, persona.ID, threadProjectID, identity, incoming)
-				if err != nil {
-					return err
-				}
-				threadID = resolvedThreadID
-			}
-			groupIdentity, err := c.channelIdentitiesRepo.WithTx(tx).Upsert(ctx, ch.ChannelType, incoming.ChatID, nil, nil, nil)
-			if err != nil {
-				return err
-			}
-			replyText, err := handleTelegramHeartbeatCommand(
-				ctx, tx,
-				ch.ID, ch.AccountID, ch.PersonaID,
-				cfg.DefaultModel,
-				threadID,
-				groupIdentity,
-				strings.TrimSpace(incoming.Text),
-				c.channelIdentitiesRepo,
-				c.personasRepo,
-				nil,
-			)
-			if err != nil {
-				return err
-			}
-			if err := commitTx(); err != nil {
-				return err
-			}
-			if replyText != "" {
-				_ = c.sendFeishuCommandReply(ctx, cfg, ch, incoming, replyText)
-			}
-			return nil
+				return &gi, nil
+			},
+		},
+		c.channelIdentitiesRepo, c.channelDMThreadsRepo, c.channelGroupThreadsRepo,
+		c.personasRepo, c.runEventRepo,
+	)
+	if err != nil {
+		return err
+	}
+	if handled {
+		if err := commitTx(); err != nil {
+			return err
 		}
+		_ = c.sendFeishuCommandReply(ctx, cfg, ch, incoming, replyText)
+		return nil
 	}
 
 	ledgerMeta, _ := json.Marshal(map[string]any{
