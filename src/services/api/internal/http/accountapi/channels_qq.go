@@ -403,10 +403,10 @@ func (c *qqConnector) HandleEvent(ctx context.Context, traceID string, ch data.C
 	// --- 群聊命令路径 ---
 	if !isPrivate {
 		cmdText := stripLeadingMention(text)
-		handled, replyText, _, err := DispatchChannelCommand(
+		_, replyText, _, cancelRunID, err := DispatchChannelCommand(
 			ctx, tx, ch, *persona, identity,
 			cmdText, false, platformChatID,
-			cfg.DefaultModel,
+			cfg.DefaultModel, nil,
 			ChannelCommandResolver{
 				ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 					return c.resolveQQThreadID(ctx, tx, ch, personaID, projectID, identity, false, chatID, "")
@@ -428,9 +428,12 @@ func (c *qqConnector) HandleEvent(ctx context.Context, traceID string, ch data.C
 		if err != nil {
 			return err
 		}
-		if handled {
+		if replyText != "" {
 			if err := commitTx(); err != nil {
 				return err
+			}
+			if cancelRunID != uuid.Nil {
+				_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 			}
 			if strings.HasPrefix(cmdText, "/heartbeat") {
 				pendingHeartbeatNotify = false

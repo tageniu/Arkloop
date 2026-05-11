@@ -936,10 +936,10 @@ func (c *feishuConnector) HandleIncoming(ctx context.Context, traceID string, ch
 
 	// --- 命令解析 ---
 	cmdText := strings.TrimSpace(incoming.Text)
-	handled, replyText, _, err := DispatchChannelCommand(
+	_, replyText, _, cancelRunID, err := DispatchChannelCommand(
 		ctx, tx, ch, *persona, identity,
 		cmdText, incoming.ConversationType == "private", incoming.ChatID,
-		cfg.DefaultModel,
+		cfg.DefaultModel, nil,
 		ChannelCommandResolver{
 			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 				return c.resolveFeishuThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
@@ -958,9 +958,12 @@ func (c *feishuConnector) HandleIncoming(ctx context.Context, traceID string, ch
 	if err != nil {
 		return err
 	}
-	if handled {
+	if replyText != "" {
 		if err := commitTx(); err != nil {
 			return err
+		}
+		if cancelRunID != uuid.Nil {
+			_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 		}
 		_ = c.sendFeishuCommandReply(ctx, cfg, ch, incoming, replyText)
 		return nil

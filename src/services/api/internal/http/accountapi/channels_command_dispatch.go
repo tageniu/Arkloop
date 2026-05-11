@@ -3,9 +3,11 @@ package accountapi
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"arkloop/services/api/internal/data"
+	"arkloop/services/api/internal/entitlement"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -60,16 +62,17 @@ func DispatchChannelCommand(
 	isPrivate bool,
 	platformChatID string,
 	defaultModel string,
+	entSvc *entitlement.Service,
 	resolver ChannelCommandResolver,
 	channelIdentitiesRepo *data.ChannelIdentitiesRepository,
 	channelDMThreadsRepo *data.ChannelDMThreadsRepository,
 	channelGroupThreadsRepo *data.ChannelGroupThreadsRepository,
 	personasRepo *data.PersonasRepository,
 	runEventRepo *data.RunEventRepository,
-) (handled bool, replyText string, prefResult *PreferenceResult, err error) {
+) (handled bool, replyText string, prefResult *PreferenceResult, cancelRunID uuid.UUID, err error) {
 	cmd, ok := telegramCommandBase(strings.TrimSpace(commandText), "")
 	if !ok {
-		return false, "", nil, nil
+		return false, "", nil, uuid.Nil, nil
 	}
 
 	// Resolve projectID
@@ -104,21 +107,21 @@ func DispatchChannelCommand(
 	case cmd == "/model" || strings.HasPrefix(cmd, "/think"):
 		threadID, err := resolveThreadID()
 		if err != nil {
-			return true, "", nil, err
+			return true, "", nil, uuid.Nil, err
 		}
-		replyText, prefResult, err = handleTelegramPreferenceCommand(ctx, tx, ch.AccountID, threadID, strings.TrimSpace(commandText), nil)
-		return true, replyText, prefResult, err
+		replyText, prefResult, err = handleTelegramPreferenceCommand(ctx, tx, ch.AccountID, threadID, strings.TrimSpace(commandText), entSvc)
+		return true, replyText, prefResult, uuid.Nil, err
 
 	case strings.HasPrefix(cmd, "/heartbeat"):
 		threadID, err := resolveThreadID()
 		if err != nil {
-			return true, "", nil, err
+			return true, "", nil, uuid.Nil, err
 		}
 		heartbeatIdentity := identity
 		if !isPrivate && resolver.ResolveHeartbeatIdentity != nil {
 			gi, err := resolver.ResolveHeartbeatIdentity(ctx, tx)
 			if err != nil {
-				return true, "", nil, err
+				return true, "", nil, uuid.Nil, err
 			}
 			if gi != nil {
 				heartbeatIdentity = *gi
@@ -133,49 +136,55 @@ func DispatchChannelCommand(
 			strings.TrimSpace(commandText),
 			channelIdentitiesRepo,
 			personasRepo,
-			nil,
+			entSvc,
 		)
-		return true, replyText, nil, err
+		return true, replyText, nil, uuid.Nil, err
 
 	case cmd == "/new":
 		if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-			return true, "当前会话未配置 persona。", nil, nil
+			return true, "当前会话未配置 persona。", nil, uuid.Nil, nil
 		}
 		if !isPrivate && resolver.IsGroupAdmin != nil && !resolver.IsGroupAdmin(ctx) {
-			return true, "无权限。", nil, nil
+			return true, "无权限。", nil, uuid.Nil, nil
 		}
 		if isPrivate {
 			if channelDMThreadsRepo != nil {
-				_ = channelDMThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, identity.ID, *ch.PersonaID, "")
+				if err := channelDMThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, identity.ID, *ch.PersonaID, ""); err != nil {
+					slog.WarnContext(ctx, "channel_command_new_delete_dm_failed", "error", err, "channel_id", ch.ID, "identity_id", identity.ID)
+					return true, "操作失败。", nil, uuid.Nil, nil
+				}
 			}
 		} else {
 			if channelGroupThreadsRepo != nil {
-				_ = channelGroupThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID)
+				if err := channelGroupThreadsRepo.WithTx(tx).DeleteByBinding(ctx, ch.ID, platformChatID, *ch.PersonaID); err != nil {
+					slog.WarnContext(ctx, "channel_command_new_delete_group_failed", "error", err, "channel_id", ch.ID, "platform_chat_id", platformChatID)
+					return true, "操作失败。", nil, uuid.Nil, nil
+				}
 			}
 		}
-		return true, "已开启新会话。", nil, nil
+		return true, "已开启新会话。", nil, uuid.Nil, nil
 
 	case cmd == "/stop":
 		if ch.PersonaID == nil || *ch.PersonaID == uuid.Nil {
-			return true, "当前没有运行中的任务。", nil, nil
+			return true, "当前没有运行中的任务。", nil, uuid.Nil, nil
 		}
 		if !isPrivate && resolver.IsGroupAdmin != nil && !resolver.IsGroupAdmin(ctx) {
-			return true, "无权限。", nil, nil
+			return true, "无权限。", nil, uuid.Nil, nil
 		}
 		threadID, err := resolveThreadID()
 		if err != nil {
-			return true, "当前没有运行中的任务。", nil, err
+			return true, "当前没有运行中的任务。", nil, uuid.Nil, err
 		}
 		activeRun, _ := runEventRepo.WithTx(tx).GetActiveRootRunForThread(ctx, threadID)
 		if activeRun == nil {
-			return true, "当前没有运行中的任务。", nil, nil
+			return true, "当前没有运行中的任务。", nil, uuid.Nil, nil
 		}
 		if _, err := runEventRepo.WithTx(tx).RequestCancel(ctx, activeRun.ID, nil, "", 0, nil); err != nil {
-			return true, "", nil, err
+			return true, "", nil, uuid.Nil, err
 		}
-		return true, "已停止当前任务。", nil, nil
+		return true, "已请求停止当前任务。", nil, activeRun.ID, nil
 
 	default:
-		return false, "", nil, nil
+		return false, "", nil, uuid.Nil, nil
 	}
 }

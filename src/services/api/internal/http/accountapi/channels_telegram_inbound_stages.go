@@ -212,10 +212,10 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if cmd == "/reset" {
 				cmdText = "/new"
 			}
-			handled, replyText, _, err := DispatchChannelCommand(
+			_, replyText, _, cancelRunID, err := DispatchChannelCommand(
 				ctx, tx, ch, *persona, identity,
 				cmdText, false, incoming.PlatformChatID,
-				cfg.DefaultModel,
+				cfg.DefaultModel, c.entitlementSvc,
 				ChannelCommandResolver{
 					ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 						return c.resolveTelegramThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
@@ -241,12 +241,14 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if err != nil {
 				return nil, err
 			}
-			_ = handled
 			if err := c.recordTelegramInboundFinalState(ctx, tx, ch, incoming, &identity.ID, nil, nil, inboundStateCommandHandled, baseMetadata); err != nil {
 				return nil, err
 			}
 			if err := commitTx(); err != nil {
 				return nil, err
+			}
+			if cancelRunID != uuid.Nil {
+				_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 			}
 			return &telegramInboundStageAResult{finalState: inboundStateCommandHandled, replyText: replyText}, nil
 		}
@@ -255,10 +257,10 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if groupIdentity != nil {
 				heartbeatIdentity = *groupIdentity
 			}
-			handled, replyText, _, err := DispatchChannelCommand(
+			_, replyText, _, _, err := DispatchChannelCommand(
 				ctx, tx, ch, *persona, heartbeatIdentity,
 				incoming.CommandText, false, incoming.PlatformChatID,
-				cfg.DefaultModel,
+				cfg.DefaultModel, c.entitlementSvc,
 				ChannelCommandResolver{
 					ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 						return c.resolveTelegramThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
@@ -273,7 +275,6 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if err != nil {
 				return nil, err
 			}
-			_ = handled
 			if err := c.recordTelegramInboundFinalState(ctx, tx, ch, incoming, &heartbeatIdentity.ID, nil, nil, inboundStateCommandHandled, baseMetadata); err != nil {
 				return nil, err
 			}
@@ -283,10 +284,10 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			return &telegramInboundStageAResult{finalState: inboundStateCommandHandled, replyText: replyText}, nil
 		}
 		if ok && cmd == "/stop" {
-			handled, replyText, _, err := DispatchChannelCommand(
+			_, replyText, _, cancelRunID, err := DispatchChannelCommand(
 				ctx, tx, ch, *persona, identity,
 				incoming.CommandText, false, incoming.PlatformChatID,
-				cfg.DefaultModel,
+				cfg.DefaultModel, c.entitlementSvc,
 				ChannelCommandResolver{
 					ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 						return c.resolveTelegramThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
@@ -312,12 +313,14 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if err != nil {
 				return nil, err
 			}
-			_ = handled
 			if err := c.recordTelegramInboundFinalState(ctx, tx, ch, incoming, &identity.ID, nil, nil, inboundStateCommandHandled, baseMetadata); err != nil {
 				return nil, err
 			}
 			if err := commitTx(); err != nil {
 				return nil, err
+			}
+			if cancelRunID != uuid.Nil {
+				_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 			}
 			return &telegramInboundStageAResult{finalState: inboundStateCommandHandled, replyText: replyText}, nil
 		}
@@ -498,10 +501,10 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if groupIdentity != nil {
 				modelIdentity = *groupIdentity
 			}
-			handled, replyText, prefResult, err := DispatchChannelCommand(
+			_, replyText, prefResult, _, err := DispatchChannelCommand(
 				ctx, tx, ch, *persona, modelIdentity,
 				incoming.CommandText, false, incoming.PlatformChatID,
-				cfg.DefaultModel,
+				cfg.DefaultModel, c.entitlementSvc,
 				ChannelCommandResolver{
 					ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 						return c.resolveTelegramThreadID(ctx, tx, ch, personaID, projectID, identity, incoming)
@@ -513,7 +516,6 @@ func (c telegramConnector) persistTelegramInboundStageA(
 			if err != nil {
 				return nil, err
 			}
-			_ = handled
 			var replyMarkup *telegrambot.InlineKeyboardMarkup
 			if prefResult != nil {
 				replyMarkup = buildPreferenceKeyboard(prefResult)

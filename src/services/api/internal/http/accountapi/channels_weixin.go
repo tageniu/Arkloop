@@ -11,6 +11,7 @@ import (
 
 	"arkloop/services/api/internal/data"
 	"arkloop/services/shared/messagecontent"
+	"arkloop/services/shared/pgnotify"
 	"arkloop/services/shared/weixinclient"
 
 	"github.com/google/uuid"
@@ -168,10 +169,10 @@ func (c *weixinConnector) HandleWeChatMessage(ctx context.Context, traceID strin
 
 	// 命令处理：/model /think /heartbeat /new /stop
 	cmdText := incoming.CommandText
-	if handled, replyText, _, err := DispatchChannelCommand(
+	if _, replyText, _, cancelRunID, err := DispatchChannelCommand(
 		ctx, tx, ch, *persona, identity,
 		cmdText, isPrivate, platformChatID,
-		cfg.DefaultModel,
+		cfg.DefaultModel, nil,
 		ChannelCommandResolver{
 			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 				return c.resolveWeixinThreadID(ctx, tx, ch, personaID, projectID, identity, isPrivate, chatID)
@@ -188,9 +189,12 @@ func (c *weixinConnector) HandleWeChatMessage(ctx context.Context, traceID strin
 		c.personasRepo, c.runEventRepo,
 	); err != nil {
 		return err
-	} else if handled {
+	} else if replyText != "" {
 		if err := commitTx(); err != nil {
 			return err
+		}
+		if cancelRunID != uuid.Nil {
+			_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 		}
 		c.sendWeixinReply(ctx, msg, replyText)
 		return nil

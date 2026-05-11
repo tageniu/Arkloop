@@ -439,10 +439,11 @@ func (c qqbotConnector) HandleMessage(ctx context.Context, traceID string, ch da
 
 	// 处理需要 persona 和 threadID 的命令（/model、/think、/heartbeat、/new、/stop）
 	cmdText := text
-	handled, replyText, _, err = DispatchChannelCommand(
+	var cancelRunID uuid.UUID
+	_, replyText, _, cancelRunID, err = DispatchChannelCommand(
 		ctx, tx, ch, *persona, identity,
 		cmdText, conversationType == "private", platformChatID,
-		cfg.DefaultModel,
+		cfg.DefaultModel, nil,
 		ChannelCommandResolver{
 			ResolveThreadID: func(ctx context.Context, tx pgx.Tx, personaID, projectID uuid.UUID, isPrivate bool, chatID string) (uuid.UUID, error) {
 				return c.resolveThreadID(ctx, tx, ch, personaID, projectID, identity, isPrivate, chatID, displayName)
@@ -464,9 +465,12 @@ func (c qqbotConnector) HandleMessage(ctx context.Context, traceID string, ch da
 	if err != nil {
 		return err
 	}
-	if handled {
+	if replyText != "" {
 		if err := tx.Commit(ctx); err != nil {
 			return err
+		}
+		if cancelRunID != uuid.Nil {
+			_, _ = c.pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, cancelRunID.String())
 		}
 		replyScope := qqbotclient.ScopeC2C
 		if conversationType == "group" {
