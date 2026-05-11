@@ -15,6 +15,7 @@ import (
 	"arkloop/services/api/internal/entitlement"
 	"arkloop/services/api/internal/observability"
 	"arkloop/services/shared/discordbot"
+	"arkloop/services/shared/runkind"
 	"arkloop/services/shared/eventbus"
 	"arkloop/services/shared/pgnotify"
 
@@ -469,7 +470,7 @@ func (c discordConnector) HandleInteraction(
 		return nil, err
 	}
 
-	reply, err := handleDiscordCommand(ctx, tx, ch, identity, event, c.channelBindCodesRepo, c.channelIdentitiesRepo, c.channelIdentityLinksRepo, c.channelDMThreadsRepo, c.threadRepo)
+	reply, err := handleDiscordCommand(ctx, tx, ch, identity, event, c.channelBindCodesRepo, c.channelIdentitiesRepo, c.channelIdentityLinksRepo, c.channelDMThreadsRepo, c.threadRepo, c.runEventRepo, c.pool)
 	if err != nil {
 		return nil, err
 	}
@@ -993,6 +994,8 @@ func handleDiscordCommand(
 	channelIdentityLinksRepo *data.ChannelIdentityLinksRepository,
 	channelDMThreadsRepo *data.ChannelDMThreadsRepository,
 	threadRepo *data.ThreadRepository,
+	runEventRepo *data.RunEventRepository,
+	pool data.DB,
 ) (*discordInteractionReply, error) {
 	data := evt.ApplicationCommandData()
 	commandName := strings.TrimSpace(data.Name)
@@ -1029,6 +1032,128 @@ func handleDiscordCommand(
 			return nil, err
 		}
 		return &discordInteractionReply{Content: "已开启新会话。", Ephemeral: true}, nil
+	case "model":
+		if evt.GuildID != "" {
+			return &discordInteractionReply{Content: "请在私信中使用 /model。", Ephemeral: true}, nil
+		}
+		if channel == nil || channel.PersonaID == nil || *channel.PersonaID == uuid.Nil {
+			return &discordInteractionReply{Content: "当前会话未配置 persona。", Ephemeral: true}, nil
+		}
+		threadMap, _ := channelDMThreadsRepo.WithTx(tx).GetByBinding(ctx, channel.ID, identity.ID, *channel.PersonaID, "")
+		threadID := uuid.Nil
+		if threadMap != nil {
+			threadID = threadMap.ThreadID
+		}
+		nameArg := ""
+		if len(data.Options) > 0 {
+			nameArg = strings.TrimSpace(data.Options[0].StringValue())
+		}
+		rawText := "/model"
+		if nameArg != "" {
+			rawText = "/model " + nameArg
+		}
+		replyText, _, err := handleTelegramPreferenceCommand(ctx, tx, channel.AccountID, threadID, rawText, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &discordInteractionReply{Content: replyText, Ephemeral: true}, nil
+	case "think":
+		if evt.GuildID != "" {
+			return &discordInteractionReply{Content: "请在私信中使用 /think。", Ephemeral: true}, nil
+		}
+		if channel == nil || channel.PersonaID == nil || *channel.PersonaID == uuid.Nil {
+			return &discordInteractionReply{Content: "当前会话未配置 persona。", Ephemeral: true}, nil
+		}
+		threadMap, _ := channelDMThreadsRepo.WithTx(tx).GetByBinding(ctx, channel.ID, identity.ID, *channel.PersonaID, "")
+		threadID := uuid.Nil
+		if threadMap != nil {
+			threadID = threadMap.ThreadID
+		}
+		levelArg := ""
+		if len(data.Options) > 0 {
+			levelArg = strings.TrimSpace(data.Options[0].StringValue())
+		}
+		rawText := "/think"
+		if levelArg != "" {
+			rawText = "/think " + levelArg
+		}
+		replyText, _, err := handleTelegramPreferenceCommand(ctx, tx, channel.AccountID, threadID, rawText, nil)
+		if err != nil {
+			return nil, err
+		}
+		return &discordInteractionReply{Content: replyText, Ephemeral: true}, nil
+	case "heartbeat":
+		if evt.GuildID != "" {
+			return &discordInteractionReply{Content: "请在私信中使用 /heartbeat。", Ephemeral: true}, nil
+		}
+		if channel == nil || channel.PersonaID == nil || *channel.PersonaID == uuid.Nil {
+			return &discordInteractionReply{Content: "当前会话未配置 persona。", Ephemeral: true}, nil
+		}
+		threadMap, _ := channelDMThreadsRepo.WithTx(tx).GetByBinding(ctx, channel.ID, identity.ID, *channel.PersonaID, "")
+		if threadMap == nil {
+			return &discordInteractionReply{Content: "当前没有活跃的会话。", Ephemeral: true}, nil
+		}
+		action := ""
+		if len(data.Options) > 0 {
+			action = strings.TrimSpace(data.Options[0].StringValue())
+		}
+		enabled, intervalMin, model, _, err := getInboundThreadHeartbeatConfig(ctx, tx, threadMap.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		switch action {
+		case "on":
+			if intervalMin <= 0 {
+				intervalMin = runkind.DefaultHeartbeatIntervalMinutes
+			}
+			if err := updateInboundThreadHeartbeatConfig(ctx, tx, threadMap.ThreadID, true, intervalMin, model); err != nil {
+				return nil, err
+			}
+			return &discordInteractionReply{Content: "心跳已开启。", Ephemeral: true}, nil
+		case "off":
+			if err := updateInboundThreadHeartbeatConfig(ctx, tx, threadMap.ThreadID, false, intervalMin, model); err != nil {
+				return nil, err
+			}
+			return &discordInteractionReply{Content: "心跳已关闭。", Ephemeral: true}, nil
+		default:
+			status := "关闭"
+			if enabled {
+				status = "开启"
+			}
+			modelDisplay := "跟随对话"
+			if strings.TrimSpace(model) != "" {
+				modelDisplay = model
+			}
+			return &discordInteractionReply{Content: fmt.Sprintf("心跳：%s\n模型：%s", status, modelDisplay), Ephemeral: true}, nil
+		}
+	case "stop":
+		if evt.GuildID != "" {
+			return &discordInteractionReply{Content: "请在私信中使用 /stop。", Ephemeral: true}, nil
+		}
+		if channel == nil || channel.PersonaID == nil || *channel.PersonaID == uuid.Nil {
+			return &discordInteractionReply{Content: "当前没有运行中的任务。", Ephemeral: true}, nil
+		}
+		threadMap, err := channelDMThreadsRepo.WithTx(tx).GetByBinding(ctx, channel.ID, identity.ID, *channel.PersonaID, "")
+		if err != nil {
+			return nil, err
+		}
+		if threadMap == nil {
+			return &discordInteractionReply{Content: "当前没有运行中的任务。", Ephemeral: true}, nil
+		}
+		activeRun, err := runEventRepo.GetActiveRootRunForThread(ctx, threadMap.ThreadID)
+		if err != nil {
+			return nil, err
+		}
+		if activeRun == nil {
+			return &discordInteractionReply{Content: "当前没有运行中的任务。", Ephemeral: true}, nil
+		}
+		if _, err := runEventRepo.WithTx(tx).RequestCancel(ctx, activeRun.ID, identity.UserID, "", 0, nil); err != nil {
+			return nil, err
+		}
+		if pool != nil {
+			_, _ = pool.Exec(ctx, "SELECT pg_notify($1, $2)", pgnotify.ChannelRunCancel, activeRun.ID.String())
+		}
+		return &discordInteractionReply{Content: "已请求停止当前任务。", Ephemeral: true}, nil
 	default:
 		return &discordInteractionReply{Content: "暂不支持这个命令。", Ephemeral: true}, nil
 	}
