@@ -184,7 +184,7 @@ export function InstalledSkillsView(props: Props) {
             ) : (
               <div className="flex flex-col gap-2">
                 {dirs.map((dir) => {
-                  const open = expanded[dir.path] !== false
+                  const open = expanded[dir.path] === true
                   return (
                     <div
                       key={dir.path}
