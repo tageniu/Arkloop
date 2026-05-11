@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { memo, type ReactNode } from 'react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
 type Option<T extends string> = {
@@ -8,7 +8,7 @@ type Option<T extends string> = {
   ariaLabel?: string
 }
 
-export function SettingsSegmentedControl<T extends string>({
+function SettingsSegmentedControlImpl<T extends string>({
   value,
   options,
   onChange,
@@ -89,3 +89,5 @@ export function SettingsSegmentedControl<T extends string>({
     </div>
   )
 }
+
+export const SettingsSegmentedControl = memo(SettingsSegmentedControlImpl) as typeof SettingsSegmentedControlImpl

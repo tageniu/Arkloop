@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { Code, Eye, FileText, X } from 'lucide-react'
 import { SettingsSegmentedControl } from '../settings/_SettingsSegmentedControl'
 import type { ArtifactRef } from '../../storage'
@@ -36,7 +36,7 @@ function getResourceFilename(resource: ResourceRef): string {
   return ('filename' in resource ? resource.filename : undefined) ?? ('name' in resource ? resource.name : undefined) ?? ('title' in resource ? resource.title : undefined) ?? pathName ?? 'Preview'
 }
 
-export function ResourcePreviewPanel({ resource, accessToken, artifacts, runId, onClose, onResourceChange }: Props) {
+export const ResourcePreviewPanel = memo(function ResourcePreviewPanel({ resource, accessToken, artifacts, runId, onClose, onResourceChange }: Props) {
   const { locale } = useLocale()
   const [mode, setMode] = useState<ViewMode>('preview')
   const [state, setState] = useState<{
@@ -146,4 +146,4 @@ export function ResourcePreviewPanel({ resource, accessToken, artifacts, runId, 
       </div>
     </div>
   )
-}
+})

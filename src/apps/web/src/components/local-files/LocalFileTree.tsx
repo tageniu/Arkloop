@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { getDesktopApi, type LocalFileEntry } from '@arkloop/shared/desktop'
 import type { LocalFileResourceRef } from '../resource-preview/types'
@@ -95,7 +95,7 @@ function entryMatchesSearch(entry: LocalFileEntry, query: string, directories: R
   return childState.entries.some((child) => entryMatchesSearch(child, query, directories))
 }
 
-export function LocalFileTree({ rootPath, onOpenFile, onPinFile, selectedPath, searchQuery = '', className }: LocalFileTreeProps) {
+export const LocalFileTree = memo(function LocalFileTree({ rootPath, onOpenFile, onPinFile, selectedPath, searchQuery = '', className }: LocalFileTreeProps) {
   const [treeState, setTreeState] = useState<TreeState>(() => ({
     rootPath,
     expanded: new Set([ROOT_KEY]),
@@ -272,4 +272,4 @@ export function LocalFileTree({ rootPath, onOpenFile, onPinFile, selectedPath, s
       )}
     </section>
   )
-}
+})

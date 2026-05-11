@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { ArrowLeft, ArrowRight, List, Search } from 'lucide-react'
 import { rightPanelIconButtonCls, rightPanelIconSize } from '../rightPanelControls'
 import { ResourcePreviewPanel } from '../resource-preview/ResourcePreviewPanel'
@@ -15,7 +15,7 @@ type Props = {
   onPinResource?: (resource: LocalFileResourceRef) => void
 }
 
-export function LocalFilesPanel({ rootPath, accessToken, previewResource, onPreviewResourceChange, onPinResource }: Props) {
+export const LocalFilesPanel = memo(function LocalFilesPanel({ rootPath, accessToken, previewResource, onPreviewResourceChange, onPinResource }: Props) {
   const [browserOpen, setBrowserOpen] = useState(true)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -160,4 +160,4 @@ export function LocalFilesPanel({ rootPath, accessToken, previewResource, onPrev
       </div>
     </section>
   )
-}
+})

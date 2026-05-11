@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type WheelEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode, type WheelEvent } from 'react'
 import { FileText, FolderOpen, Globe2, Plus, X } from 'lucide-react'
 import { iconButtonSmCls } from './buttonStyles'
 import { DropdownAction } from './DropdownAction'
@@ -51,7 +51,7 @@ function sameStringArray(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index])
 }
 
-export function RightPanel({
+export const RightPanel = memo(function RightPanel({
   tabs,
   activeTabId,
   onSelectTab,
@@ -333,4 +333,4 @@ export function RightPanel({
       </div>
     </div>
   )
-}
+})

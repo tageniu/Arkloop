@@ -13,7 +13,7 @@ import { useRunLifecycle } from '../contexts/run-lifecycle'
 import { isLocalTerminalMessage, useMessageStore } from '../contexts/message-store'
 import { useMessageMeta } from '../contexts/message-meta'
 import { useStream } from '../contexts/stream'
-import { usePanels } from '../contexts/panels'
+import { usePanelActions, usePanels } from '../contexts/panels'
 import { useAuth } from '../contexts/auth'
 import { useThreadList } from '../contexts/thread-list'
 import { apiBaseUrl } from '@arkloop/shared/api'
@@ -100,7 +100,8 @@ export const MessageList = memo(function MessageList({
   const msgs = useMessageStore()
   const meta = useMessageMeta()
   const stream = useStream()
-  const panels = usePanels()
+  const { activePanel, shareModal } = usePanels()
+  const { closePanel, openSourcePanel, setShareState } = usePanelActions()
   const threadList = useThreadList()
   const location = useLocation()
   const locationState = location.state as LocationState
@@ -154,25 +155,25 @@ export const MessageList = memo(function MessageList({
     return map
   })())
 
-  const codePanelExecutionId = panels.activePanel?.type === 'code' ? panels.activePanel.execution.id : null
+  const codePanelExecutionId = activePanel?.type === 'code' ? activePanel.execution.id : null
 
-  const sharingMessageId = panels.shareModal.sharingMessageId
-  const sharedMessageId = panels.shareModal.sharedMessageId
+  const sharingMessageId = shareModal.sharingMessageId
+  const sharedMessageId = shareModal.sharedMessageId
 
   const createShareForMessage = useCallback((messageId: string) => {
     if (!threadId || sharingMessageId) return
-    panels.setShareState(messageId, null)
+    setShareState(messageId, null)
     createThreadShare(accessToken, threadId, 'public')
       .then((share) => {
         const url = `${window.location.origin}/s/${share.token}`
         void navigator.clipboard.writeText(url)
-        panels.setShareState(null, messageId)
-        setTimeout(() => panels.setShareState(null, null), 1500)
+        setShareState(null, messageId)
+        setTimeout(() => setShareState(null, null), 1500)
       })
       .catch(() => {
-        panels.setShareState(null, null)
+        setShareState(null, null)
       })
-  }, [threadId, sharingMessageId, accessToken, panels])
+  }, [threadId, sharingMessageId, accessToken, setShareState])
 
   // Pre-build stable callbacks per message to make MessageBubble's React.memo effective.
   // Rebuilds only when messages, streaming state, or parent callbacks change —
@@ -441,9 +442,9 @@ export const MessageList = memo(function MessageList({
               shareState={sharingMessageId === msg.id ? 'sharing' : sharedMessageId === msg.id ? 'shared' : 'idle'}
               webSources={resolvedSources}
               onShowSources={canShowSources ? () => {
-                if (sourcePanelMessageId === msg.id) { panels.closePanel(); return }
-                panels.closePanel()
-                panels.openSourcePanel(msg.id)
+                if (sourcePanelMessageId === msg.id) { closePanel(); return }
+                closePanel()
+                openSourcePanel(msg.id)
               } : undefined}
               onViewRunDetail={showRunDetailButton && msg.streamId ? () => setRunDetailPanelRunId(msg.streamId!) : undefined}
               isLast={true}
@@ -511,11 +512,11 @@ export const MessageList = memo(function MessageList({
             msg.role === 'assistant' && canShowSources
               ? () => {
                   if (sourcePanelMessageId === msg.id) {
-                    panels.closePanel()
+                    closePanel()
                     return
                   }
-                  panels.closePanel()
-                  panels.openSourcePanel(msg.id)
+                  closePanel()
+                  openSourcePanel(msg.id)
                 }
               : undefined
           }
