@@ -450,6 +450,7 @@ export interface LocaleStrings {
   tasks: string;
   tasksEmpty: string;
   workGreeting: string;
+  worked: string;
   // thread context menu
   starThread: string
   unstarThread: string

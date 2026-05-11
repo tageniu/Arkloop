@@ -460,6 +460,7 @@ export const zh: LocaleStrings = {
   tasks: "任务",
   tasksEmpty: "暂无任务记录",
   workGreeting: "今天要完成什么？",
+  worked: "已处理",
   starThread: "收藏",
   unstarThread: "取消收藏",
   shareThread: "分享",

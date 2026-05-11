@@ -20,7 +20,8 @@ import { apiBaseUrl } from '@arkloop/shared/api'
 import type { AgentMessage } from '../agent-ui'
 import { copTimelinePayloadForSegment, type CopTimelinePayload, type TodoWriteRef } from '../copSegmentTimeline'
 import { buildResolvedPool, EMPTY_POOL, buildFallbackSegments } from '../copSubSegment'
-import { assistantTurnPlainText } from '../assistantTurnSegments'
+import { assistantTurnPlainText, splitWorkGroup, type AssistantTurnSegment, type WorkGroup as WorkGroupType } from '../assistantTurnSegments'
+import { WorkGroup } from './WorkGroup'
 import { resolveMessageSourcesForRender } from './chatSourceResolver'
 import { createThreadShare } from '../api'
 import { readMessageTerminalStatus, readMessageWidgets, type ArtifactRef, type SubAgentRef, type WebSource, type WidgetRef } from '../storage'
@@ -320,6 +321,8 @@ export const MessageList = memo(function MessageList({
     const messageFileOps = msg.role === 'assistant' ? msgMeta?.fileOps : undefined
     const messageWebFetches = msg.role === 'assistant' ? msgMeta?.webFetches : undefined
     const msgThinking = msg.role === 'assistant' ? msgMeta?.thinking : undefined
+    const durationMs = historicalTurn?.durationMs ?? 0
+    const workGroupSplit = hasAssistantTurn ? splitWorkGroup(historicalSegments, durationMs) : { workGroup: null as WorkGroupType | null, finalText: null as string | null }
     const bubbleCallbacks = bubbleCallbacksByMessageId.get(msg.id)
     return (
       <div
@@ -344,96 +347,129 @@ export const MessageList = memo(function MessageList({
                   typography={isWorkMode ? 'work' : 'default'}
                 />
               )}
-            {historicalSegments.map((seg, si) =>
-              seg.type === 'text' ? (
-                <MarkdownRenderer
-                  key={`${msg.id}-at-${si}`}
-                  content={seg.content}
-                  webSources={resolvedSources}
-                  artifacts={msgMeta?.artifacts}
-                  accessToken={accessToken}
-                  runId={msg.streamId ?? undefined}
-                  workFolder={workFolder}
-                  onOpenDocument={openDocumentPanel}
-                  onOpenResource={openResourcePanel}
-                  typography={isWorkMode ? 'work' : 'default'}
-                  trimTrailingMargin={
-                    historicalSegments[si + 1] == null ||
-                    historicalSegments[si + 1]?.type === 'cop'
-                  }
-                />
-              ) : (
-                (() => {
-                  const precomputed = copPayloadsByMessageId.get(msg.id)
-                  const timelinePools = {
-                    codeExecutions: messageCodeExecutions,
-                    fileOps: messageFileOps,
-                    webFetches: messageWebFetches,
-                    subAgents: messageSubAgents,
-                    searchSteps: messageSearchSteps ?? [],
-                    sources: resolvedSources ?? [],
-                  }
-                  const turnTodoWrites = precomputed?.turnTodoWrites ?? historicalSegments
-                    .flatMap((entry) => entry.type === 'cop'
-                      ? copTimelinePayloadForSegment(entry, timelinePools).todoWrites ?? []
-                      : [])
-                  const payload = precomputed?.payloads.get(String(si)) ?? copTimelinePayloadForSegment(seg, timelinePools)
-                  const histWidgets = precomputed?.histWidgetsMap.get(String(si)) ?? historicWidgetsForCop(seg, msgWidgetsRaw)
-                  const segmentLive = currentRunMessageLive && si === historicalSegments.length - 1
+            {(() => {
+              const precomputed = copPayloadsByMessageId.get(msg.id)
+              const timelinePools = {
+                codeExecutions: messageCodeExecutions,
+                fileOps: messageFileOps,
+                webFetches: messageWebFetches,
+                subAgents: messageSubAgents,
+                searchSteps: messageSearchSteps ?? [],
+                sources: resolvedSources ?? [],
+              }
 
-                  const timelineTitleOverride = displayTerminalStatus != null
-                    ? currentRunCopHeaderOverride({
-                        title: seg.title,
-                        steps: payload.steps,
-                        hasCodeExecutions: !!(payload.codeExecutions && payload.codeExecutions.length > 0),
-                        hasSubAgents: !!(payload.subAgents && payload.subAgents.length > 0),
-                        hasFileOps: !!(payload.fileOps && payload.fileOps.length > 0),
-                        hasWebFetches: !!(payload.webFetches && payload.webFetches.length > 0),
-                        hasGenericTools: !!(payload.genericTools && payload.genericTools.length > 0),
-                        hasThinking: seg.items.some((item) => item.kind === 'thinking'),
-                        handoffStatus: displayTerminalStatus,
-                      })
-                    : seg.title?.trim() || undefined
-
-                  const entryComplete = !segmentLive
-                  const promotedNodes = [(
-                    <CopSegmentBlocks
-                      key={`${msg.id}-timeline-${si}`}
-                      segment={seg}
-                      keyPrefix={`${msg.id}-timeline-${si}`}
-                      {...timelinePools}
-                      isComplete={entryComplete}
-                      live={segmentLive}
-                      headerOverride={timelineTitleOverride}
-                      compactNarrativeEnd={idx < lastTurnStartIdx}
-                      onOpenCodeExecution={openCodePanel}
-                      onOpenSubAgent={openAgentPanel}
-                      activeCodeExecutionId={codePanelExecutionId ?? undefined}
-                      accessToken={accessToken}
-                      baseUrl={baseUrl}
-                      typography={isWorkMode ? 'work' : 'default'}
-                      todoWritesForFinalDisplay={turnTodoWrites}
-                    />
-                  )]
-
+              const renderSegment = (seg: AssistantTurnSegment, si: number, segments: AssistantTurnSegment[], isLive: boolean) => {
+                if (seg.type === 'text') {
                   return (
-                    <Fragment key={`${msg.id}-acw-${si}`}>
-                      {promotedNodes}
-                      {histWidgets.map((w) => (
-                        <WidgetBlock
-                          key={w.id}
-                          html={w.html}
-                          title={w.title}
-                          complete
-                          compact
-                          onAction={handleArtifactAction}
-                        />
-                      ))}
-                    </Fragment>
+                    <MarkdownRenderer
+                      key={`${msg.id}-at-${si}`}
+                      content={seg.content}
+                      webSources={resolvedSources}
+                      artifacts={msgMeta?.artifacts}
+                      accessToken={accessToken}
+                      runId={msg.streamId ?? undefined}
+                      workFolder={workFolder}
+                      onOpenDocument={openDocumentPanel}
+                      onOpenResource={openResourcePanel}
+                      typography={isWorkMode ? 'work' : 'default'}
+                      trimTrailingMargin={
+                        segments[si + 1] == null ||
+                        segments[si + 1]?.type === 'cop'
+                      }
+                    />
                   )
-                })()
-              ),
-            )}
+                }
+
+                const turnTodoWrites = precomputed?.turnTodoWrites ?? historicalSegments
+                  .flatMap((entry) => entry.type === 'cop'
+                    ? copTimelinePayloadForSegment(entry, timelinePools).todoWrites ?? []
+                    : [])
+                const payload = precomputed?.payloads.get(String(si)) ?? copTimelinePayloadForSegment(seg, timelinePools)
+                const histWidgets = precomputed?.histWidgetsMap.get(String(si)) ?? historicWidgetsForCop(seg, msgWidgetsRaw)
+
+                const timelineTitleOverride = displayTerminalStatus != null
+                  ? currentRunCopHeaderOverride({
+                      title: seg.title,
+                      steps: payload.steps,
+                      hasCodeExecutions: !!(payload.codeExecutions && payload.codeExecutions.length > 0),
+                      hasSubAgents: !!(payload.subAgents && payload.subAgents.length > 0),
+                      hasFileOps: !!(payload.fileOps && payload.fileOps.length > 0),
+                      hasWebFetches: !!(payload.webFetches && payload.webFetches.length > 0),
+                      hasGenericTools: !!(payload.genericTools && payload.genericTools.length > 0),
+                      hasThinking: seg.items.some((item) => item.kind === 'thinking'),
+                      handoffStatus: displayTerminalStatus,
+                    })
+                  : seg.title?.trim() || undefined
+
+                const entryComplete = !isLive
+                const promotedNodes = [(
+                  <CopSegmentBlocks
+                    key={`${msg.id}-timeline-${si}`}
+                    segment={seg}
+                    keyPrefix={`${msg.id}-timeline-${si}`}
+                    {...timelinePools}
+                    isComplete={entryComplete}
+                    live={isLive}
+                    headerOverride={timelineTitleOverride}
+                    compactNarrativeEnd={idx < lastTurnStartIdx}
+                    onOpenCodeExecution={openCodePanel}
+                    onOpenSubAgent={openAgentPanel}
+                    activeCodeExecutionId={codePanelExecutionId ?? undefined}
+                    accessToken={accessToken}
+                    baseUrl={baseUrl}
+                    typography={isWorkMode ? 'work' : 'default'}
+                    todoWritesForFinalDisplay={turnTodoWrites}
+                  />
+                )]
+
+                return (
+                  <Fragment key={`${msg.id}-acw-${si}`}>
+                    {promotedNodes}
+                    {histWidgets.map((w) => (
+                      <WidgetBlock
+                        key={w.id}
+                        html={w.html}
+                        title={w.title}
+                        complete
+                        compact
+                        onAction={handleArtifactAction}
+                      />
+                    ))}
+                  </Fragment>
+                )
+              }
+
+              if (workGroupSplit.workGroup != null) {
+                return (
+                  <>
+                    <WorkGroup durationMs={durationMs}>
+                      {workGroupSplit.workGroup.segments.map((seg, si) =>
+                        renderSegment(seg, si, workGroupSplit.workGroup!.segments, false)
+                      )}
+                    </WorkGroup>
+                    {workGroupSplit.finalText != null && (
+                      <MarkdownRenderer
+                        key={`${msg.id}-final`}
+                        content={workGroupSplit.finalText}
+                        webSources={resolvedSources}
+                        artifacts={msgMeta?.artifacts}
+                        accessToken={accessToken}
+                        runId={msg.streamId ?? undefined}
+                        workFolder={workFolder}
+                        onOpenDocument={openDocumentPanel}
+                        onOpenResource={openResourcePanel}
+                        typography={isWorkMode ? 'work' : 'default'}
+                        trimTrailingMargin={true}
+                      />
+                    )}
+                  </>
+                )
+              }
+
+              return historicalSegments.map((seg, si) =>
+                renderSegment(seg, si, historicalSegments, currentRunMessageLive && si === historicalSegments.length - 1)
+              )
+            })()}
           {idx === messages.length - 1 && !isStreaming && !sending && (
             <AssistantActionBar
               textToCopy={assistantTurnPlainText(historicalTurn!)}

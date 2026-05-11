@@ -8,12 +8,14 @@ import {
   foldAssistantTurnEvent as foldSharedAssistantTurnEvent,
   requestAssistantTurnThinkingBreak,
   snapshotAssistantTurn,
+  splitWorkGroup,
   type AssistantTurnEvent,
   type AssistantTurnFoldState,
   type AssistantTurnSegment,
   type AssistantTurnUi,
   type CopBlockItem,
   type TurnToolCallRef,
+  type WorkGroup,
 } from '../../shared/src/assistantTurn'
 import {
   agentEventDataRecord,
@@ -30,12 +32,14 @@ export {
   finalizeAssistantTurnFoldState,
   requestAssistantTurnThinkingBreak,
   snapshotAssistantTurn,
+  splitWorkGroup,
   type AssistantTurnEvent,
   type AssistantTurnFoldState,
   type AssistantTurnSegment,
   type AssistantTurnUi,
   type CopBlockItem,
   type TurnToolCallRef,
+  type WorkGroup,
 }
 
 function toAssistantTurnEventType(type: string): string {

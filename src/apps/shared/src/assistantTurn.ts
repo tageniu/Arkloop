@@ -30,7 +30,51 @@ export type AssistantTurnSegment =
   | { type: 'text'; content: string }
   | { type: 'cop'; title: string | null; items: CopBlockItem[] }
 
-export type AssistantTurnUi = { segments: AssistantTurnSegment[] }
+export type AssistantTurnUi = { segments: AssistantTurnSegment[]; durationMs?: number }
+
+export type WorkGroup = {
+  durationMs: number
+  segments: AssistantTurnSegment[]
+}
+
+/**
+ * Split segments into work group (pre-final) and final text.
+ * The last text segment is the final answer; everything before it goes into the work group.
+ * Returns null workGroup when there's nothing meaningful to collapse.
+ */
+export function splitWorkGroup(
+  segments: AssistantTurnSegment[],
+  durationMs: number,
+): { workGroup: WorkGroup | null; finalText: string | null } {
+  // Find the index of the last text segment
+  let lastTextIndex = -1
+  for (let i = segments.length - 1; i >= 0; i--) {
+    if (segments[i]!.type === 'text') {
+      lastTextIndex = i
+      break
+    }
+  }
+
+  // No text segment at all
+  if (lastTextIndex === -1) {
+    return { workGroup: null, finalText: null }
+  }
+
+  const finalSegment = segments[lastTextIndex]!
+  const finalText = finalSegment.type === 'text' ? finalSegment.content : null
+
+  // Need at least 2 segments before final to justify a work group.
+  // A single pre-final segment (text or cop) stays inline.
+  if (lastTextIndex < 2) {
+    return { workGroup: null, finalText }
+  }
+
+  const workGroupSegments = segments.slice(0, lastTextIndex)
+  return {
+    workGroup: { durationMs, segments: workGroupSegments },
+    finalText,
+  }
+}
 
 export type AssistantTurnFoldState = {
   segments: AssistantTurnSegment[]
@@ -520,7 +564,13 @@ export function buildAssistantTurnFromEvents(events: readonly AssistantTurnEvent
       ? assistantTurnEventTimeMs(orderedEvents[orderedEvents.length - 1]!)
       : undefined
   finalizeAssistantTurnFoldState(state, finalEndMs)
-  return { segments: state.segments.map(cloneSegment) }
+  const firstTs = orderedEvents.length > 0 ? assistantTurnEventTimeMs(orderedEvents[0]!) : undefined
+  const lastTs = orderedEvents.length > 0 ? assistantTurnEventTimeMs(orderedEvents[orderedEvents.length - 1]!) : undefined
+  const durationMs = firstTs != null && lastTs != null ? lastTs - firstTs : undefined
+  return {
+    segments: state.segments.map(cloneSegment),
+    ...(durationMs != null && durationMs > 0 ? { durationMs } : {}),
+  }
 }
 
 export function assistantTurnPlainText(turn: AssistantTurnUi): string {

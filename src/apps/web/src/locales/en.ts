@@ -464,6 +464,7 @@ export const en: LocaleStrings = {
   tasks: "Tasks",
   tasksEmpty: "No tasks yet",
   workGreeting: "What's on the agenda?",
+  worked: "Worked",
   starThread: "Star",
   unstarThread: "Unstar",
   shareThread: "Share",
