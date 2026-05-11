@@ -936,6 +936,7 @@ export type MessageContent = {
 export type CreateMessageRequest = {
   content?: string
   content_json?: MessageContent
+  client_message_id?: string
 }
 
 export type MessageResponse = {
@@ -948,6 +949,7 @@ export type MessageResponse = {
   content_json?: MessageContent
   created_at: string
   run_id?: string
+  client_message_id?: string
 }
 
 export type UploadedThreadAttachment = {

@@ -317,6 +317,8 @@ export const zh: LocaleStrings = {
   sseReconnectNotice: "连接已断开，正在重连",
   failedRunTitle: "出了点问题，本次运行未能完成",
   retryAction: "Retry",
+  messageSending: "发送中",
+  messageNotSent: "未发送",
   resetAction: "重置",
   profileTitle: "个人资料",
   profileName: "名称",

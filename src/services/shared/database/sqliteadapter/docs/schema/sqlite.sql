@@ -306,6 +306,12 @@ CREATE UNIQUE INDEX tool_provider_configs_user_provider_idx
 
 CREATE UNIQUE INDEX uq_messages_thread_id_thread_seq ON messages(thread_id, thread_seq);
 
+CREATE UNIQUE INDEX uq_messages_user_client_message_id
+    ON messages (account_id, thread_id, created_by_user_id, json_extract(metadata_json, '$.client_message_id'))
+    WHERE role = 'user'
+      AND deleted_at IS NULL
+      AND COALESCE(json_extract(metadata_json, '$.client_message_id'), '') <> '';
+
 CREATE UNIQUE INDEX uq_platform_skills
     ON skill_packages (skill_key, version)
     WHERE account_id IS NULL;

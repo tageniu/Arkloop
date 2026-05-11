@@ -69,6 +69,15 @@ func createThreadMessage(
 			httpkit.WriteError(w, nethttp.StatusUnprocessableEntity, "validation.error", "request validation failed", traceID, map[string]any{"reason": err.Error()})
 			return
 		}
+		clientMessageID := ""
+		if body.ClientMessageID != nil {
+			parsed, err := uuid.Parse(strings.TrimSpace(*body.ClientMessageID))
+			if err != nil {
+				httpkit.WriteError(w, nethttp.StatusUnprocessableEntity, "validation.error", "request validation failed", traceID, map[string]any{"reason": "client_message_id must be a valid UUID"})
+				return
+			}
+			clientMessageID = parsed.String()
+		}
 
 		thread, err := threadRepo.GetByID(r.Context(), threadID)
 		if err != nil {
@@ -87,6 +96,19 @@ func createThreadMessage(
 			return
 		}
 
+		if clientMessageID != "" {
+			existing, err := messageRepo.FindByClientMessageID(r.Context(), thread.AccountID, threadID, actor.UserID, clientMessageID)
+			if err != nil {
+				slog.Error("createThreadMessage: FindByClientMessageID failed", "thread_id", threadID, "error", err)
+				writeInternalError(w, traceID, err)
+				return
+			}
+			if existing != nil {
+				httpkit.WriteJSON(w, traceID, nethttp.StatusOK, toMessageResponse(*existing))
+				return
+			}
+		}
+
 		contentJSON, err = migrateStagingAttachments(r.Context(), store, contentJSON, thread.AccountID, threadID)
 		if err != nil {
 			slog.Error("createThreadMessage: staging migration failed", "thread_id", threadID, "error", err)
@@ -94,9 +116,28 @@ func createThreadMessage(
 			return
 		}
 
+		var metadataJSON json.RawMessage
+		if clientMessageID != "" {
+			metadataJSON, err = json.Marshal(map[string]string{"client_message_id": clientMessageID})
+			if err != nil {
+				writeInternalError(w, traceID, err)
+				return
+			}
+		}
+
 		// Use thread.AccountID so messages stay on the thread's account even if token claims drift.
-		message, err := messageRepo.CreateStructured(r.Context(), thread.AccountID, threadID, "user", projection, contentJSON, &actor.UserID)
+		message, err := messageRepo.CreateStructuredWithMetadata(r.Context(), thread.AccountID, threadID, "user", projection, contentJSON, metadataJSON, &actor.UserID)
 		if err != nil {
+			if clientMessageID != "" {
+				existing, findErr := messageRepo.FindByClientMessageID(r.Context(), thread.AccountID, threadID, actor.UserID, clientMessageID)
+				if findErr == nil && existing != nil {
+					httpkit.WriteJSON(w, traceID, nethttp.StatusOK, toMessageResponse(*existing))
+					return
+				}
+				if findErr != nil {
+					slog.Warn("createThreadMessage: post-create FindByClientMessageID failed", "thread_id", threadID, "error", findErr)
+				}
+			}
 			slog.Error("createThreadMessage: CreateStructured failed", "thread_id", threadID, "error", err)
 			var threadNotFound data.ThreadNotFoundError
 			if errors.As(err, &threadNotFound) {
@@ -201,14 +242,20 @@ func toMessageResponse(message data.Message) messageResponse {
 		createdByUserID = &value
 	}
 	var runID *string
+	var clientMessageID *string
 	if len(message.MetadataJSON) > 0 {
 		var metadata struct {
-			RunID string `json:"run_id"`
+			RunID           string `json:"run_id"`
+			ClientMessageID string `json:"client_message_id"`
 		}
 		if err := json.Unmarshal(message.MetadataJSON, &metadata); err == nil {
 			metadata.RunID = strings.TrimSpace(metadata.RunID)
 			if metadata.RunID != "" {
 				runID = &metadata.RunID
+			}
+			metadata.ClientMessageID = strings.TrimSpace(metadata.ClientMessageID)
+			if metadata.ClientMessageID != "" {
+				clientMessageID = &metadata.ClientMessageID
 			}
 		}
 	}
@@ -223,6 +270,7 @@ func toMessageResponse(message data.Message) messageResponse {
 		Content:         message.Content,
 		ContentJSON:     message.ContentJSON,
 		CreatedAt:       message.CreatedAt.UTC().Format(time.RFC3339Nano),
+		ClientMessageID: clientMessageID,
 	}
 }
 

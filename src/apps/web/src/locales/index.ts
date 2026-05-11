@@ -101,6 +101,8 @@ export interface LocaleStrings {
   sseReconnectNotice: string;
   failedRunTitle: string;
   retryAction: string;
+  messageSending: string;
+  messageNotSent: string;
   resetAction: string;
   logout: string;
   language: string;

@@ -108,7 +108,17 @@ import {
   type UploadedThreadAttachment,
 } from '../api'
 import { readAgentUIEvents, type AgentMessage, useAgentClient } from '../agent-ui'
-import { buildMessageRequest } from '../messageContent'
+import {
+  buildMessageRequest,
+  buildOptimisticUserMessage,
+  buildUserMessageRetryRequest,
+  createClientMessageId,
+  markDeliveryFailed,
+  messageClientMessageId,
+  replaceLocalUserMessage,
+  undeliveredLocalUserMessages,
+  withMessageDeliveryStatus,
+} from '../messageContent'
 import { createQueuedPrompt, type QueuedPrompt } from '../queuedPrompts'
 import {
   addSearchThreadId,
@@ -2038,7 +2048,7 @@ export const ChatView = memo(function ChatView() {
 
   const handleSend = useCallback(async (e: React.FormEvent<HTMLFormElement>, personaKey: string, modelOverride?: string) => {
     e.preventDefault()
-    if (sending || !threadId) return
+    if (!threadId) return
     if (editingQueuedPromptId) {
       saveQueuedPromptEdit()
       return
@@ -2069,6 +2079,29 @@ export const ChatView = memo(function ChatView() {
       !isInterruptedRunStatus(terminalRunHandoffStatus) &&
       !isInterruptedRunStatus(lastAssistantTerminalStatus)
 
+    if (sending && !isStreaming) {
+      const text = draft.trim()
+      if (text || attachments.length > 0) {
+        const queuedAttachments = queueReadyAttachments(attachments)
+        if (!queuedAttachments) {
+          setError({ message: 'Attachments are still uploading.' })
+          return
+        }
+        appendQueuedPrompt(createQueuedPrompt({
+          text,
+          attachments: queuedAttachments,
+          personaKey,
+          modelOverride,
+          workDir: resolveThreadWorkFolder(threadId),
+          reasoningMode: resolveReasoningMode(),
+        }))
+        attachments.forEach((attachment) => revokeDraftAttachment(attachment))
+        setAttachments([])
+        chatInputRef.current?.clear()
+      }
+      return
+    }
+
     if (isStreaming) {
       const text = draft.trim()
       if (text || attachments.length > 0) {
@@ -2096,12 +2129,7 @@ export const ChatView = memo(function ChatView() {
     if (!text && attachments.length === 0) return
 
     const hint = chooseThinkingHint(t.copThinkingHints)
-    setSending(true)
-    setPendingThinking(true)
-    setThinkingHint(hint)
-    setError(null)
-    setInjectionBlocked(null)
-    injectionBlockedRunIdRef.current = null
+    const deliveryAttemptKeys: Array<{ messageId: string; clientMessageId: string }> = []
 
     try {
       const uploadAttachments = async () => {
@@ -2115,6 +2143,12 @@ export const ChatView = memo(function ChatView() {
       }
 
       if (pendingIncognito && messages.length > 0) {
+        setSending(true)
+        setPendingThinking(true)
+        setThinkingHint(hint)
+        setError(null)
+        setInjectionBlocked(null)
+        injectionBlockedRunIdRef.current = null
         await waitForThreadModeUpdates()
         const lastMessageId = messages[messages.length - 1].id
         const forked = await forkThread(accessToken, threadId, lastMessageId, true)
@@ -2150,23 +2184,24 @@ export const ChatView = memo(function ChatView() {
         return
       }
 
-      const uploaded = await uploadAttachments()
-      const message = await agentClient.createMessage({
-        threadId,
-        request: buildMessageRequest(text, uploaded),
-      })
-      invalidateMessageSync()
-      const syncedMessages = terminalRunIdToSync
-        ? await readConsistentMessages(terminalRunIdToSync)
-        : null
-      setUserEnterMessageId(message.id)
-      setMessages((prev) => {
-        const base = syncedMessages && syncedMessages.length > 0 ? syncedMessages : prev
-        return base.some((item) => item.id === message.id) ? base : [...base, message]
-      })
-      if (terminalRunIdToSync && syncedMessages?.some((item) => item.role === 'assistant' && item.streamId === terminalRunIdToSync)) {
-        clearThreadRunHandoff(threadId)
+      const uploaded = queueReadyAttachments(attachments)
+      if (!uploaded) {
+        setError({ message: 'Attachments are still uploading.' })
+        return
       }
+      const clientMessageId = createClientMessageId()
+      const request = buildMessageRequest(text, uploaded)
+      const localMessage = buildOptimisticUserMessage(request, clientMessageId)
+
+      setSending(true)
+      setPendingThinking(true)
+      setThinkingHint(hint)
+      setError(null)
+      setInjectionBlocked(null)
+      injectionBlockedRunIdRef.current = null
+      invalidateMessageSync()
+      setUserEnterMessageId(localMessage.id)
+      setMessages((prev) => [...prev, localMessage])
       if (shouldPinNewPrompt) {
         activateAnchor()
       } else {
@@ -2175,8 +2210,40 @@ export const ChatView = memo(function ChatView() {
       attachments.forEach((attachment) => revokeDraftAttachment(attachment))
       chatInputRef.current?.clear()
       setAttachments([])
+
+      let lastCreatedMessage: AgentMessage | null = null
+      const messagesToCreate = undeliveredLocalUserMessages([...messages, localMessage])
+      for (const messageToCreate of messagesToCreate) {
+        const retryClientMessageId = messageClientMessageId(messageToCreate) ?? createClientMessageId()
+        deliveryAttemptKeys.push({ messageId: messageToCreate.id, clientMessageId: retryClientMessageId })
+        setMessages((prev) => prev.map((item) =>
+          item.id === messageToCreate.id
+            ? withMessageDeliveryStatus(item, 'pending', retryClientMessageId)
+            : item,
+        ))
+        const created = await agentClient.createMessage({
+          threadId,
+          request: buildUserMessageRetryRequest(messageToCreate, retryClientMessageId),
+        })
+        invalidateMessageSync()
+        setUserEnterMessageId(created.id)
+        setMessages((prev) => replaceLocalUserMessage(prev, messageToCreate.id, retryClientMessageId, created))
+        lastCreatedMessage = created
+      }
+
+      if (!lastCreatedMessage) return
+      const syncedMessages = terminalRunIdToSync
+        ? await readConsistentMessages(terminalRunIdToSync)
+        : null
+      setMessages((prev) => {
+        const base = syncedMessages && syncedMessages.length > 0 ? syncedMessages : prev
+        return base
+      })
+      if (terminalRunIdToSync && syncedMessages?.some((item) => item.role === 'assistant' && item.streamId === terminalRunIdToSync)) {
+        clearThreadRunHandoff(threadId)
+      }
       injectionBlockedRunIdRef.current = null
-      noResponseMsgIdRef.current = message.id
+      noResponseMsgIdRef.current = lastCreatedMessage.id
 
       await waitForThreadModeUpdates()
       const run = await agentClient.createRun({
@@ -2197,6 +2264,7 @@ export const ChatView = memo(function ChatView() {
         onLoggedOut()
         return
       }
+      setMessages((prev) => markDeliveryFailed(prev, deliveryAttemptKeys))
       setError(normalizeError(err))
     } finally {
       setSending(false)
@@ -2983,7 +3051,7 @@ export const ChatView = memo(function ChatView() {
       onSubmit={handleSend}
       onCancel={handleCancel}
       placeholder={isStreaming ? t.followUpPlaceholder : t.replyPlaceholder}
-      disabled={sending}
+      disabled={false}
       isStreaming={isStreaming}
       canCancel={canCancel}
       cancelSubmitting={cancelSubmitting}
@@ -3009,7 +3077,7 @@ export const ChatView = memo(function ChatView() {
       learningModeUpdating={learningModeUpdating}
       onToggleLearningMode={handleToggleLearningMode}
     />
-  ), [attachments, sending, isStreaming, canCancel, cancelSubmitting, effectiveAppMode, isSearchThread, hasMessages, messagesLoading, threadId, accessToken, me?.id, t.followUpPlaceholder, t.replyPlaceholder, handleSend, handleCancel, handleAttachFiles, handlePasteContent, handleRemoveAttachment, handleAsrError, handlePersonaChange, onOpenSettings, editingQueuedPromptId, cancelQueuedPromptEdit, currentThread?.collaboration_mode, currentThread?.learning_mode_enabled, learningModeUpdating, handleTogglePlanMode, handleToggleLearningMode])
+  ), [attachments, isStreaming, canCancel, cancelSubmitting, effectiveAppMode, isSearchThread, hasMessages, messagesLoading, threadId, accessToken, me?.id, t.followUpPlaceholder, t.replyPlaceholder, handleSend, handleCancel, handleAttachFiles, handlePasteContent, handleRemoveAttachment, handleAsrError, handlePersonaChange, onOpenSettings, editingQueuedPromptId, cancelQueuedPromptEdit, currentThread?.collaboration_mode, currentThread?.learning_mode_enabled, learningModeUpdating, handleTogglePlanMode, handleToggleLearningMode])
 
   const renderLiveCopItems = useCallback((
     seg: Extract<AssistantTurnSegment, { type: 'cop' }>,

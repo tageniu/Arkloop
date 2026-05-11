@@ -32,6 +32,7 @@ import {
   widgetToolCallIdsPlacedInTurn,
   historicWidgetsForCop,
 } from '../lib/chat-helpers'
+import { isLocalUserMessage, messageClientMessageId } from '../messageContent'
 
 type LocationState = {
   initialRunId?: string
@@ -191,7 +192,7 @@ export const MessageList = memo(function MessageList({
       if (msg.role === 'user' && !isStreaming && !sending) {
         map.set(msg.id, {
           onRetry: () => handleRetryUserMessage(msg),
-          onEdit: (newContent: string) => handleEditMessage(msg, newContent),
+          ...(!isLocalUserMessage(msg) ? { onEdit: (newContent: string) => handleEditMessage(msg, newContent) } : {}),
         })
       } else if (msg.role === 'assistant') {
         const callbacks: {
@@ -321,7 +322,7 @@ export const MessageList = memo(function MessageList({
     const bubbleCallbacks = bubbleCallbacksByMessageId.get(msg.id)
     return (
       <div
-        key={msg.id}
+        key={messageClientMessageId(msg) ?? msg.id}
         ref={msg.role === 'user' && idx === lastTurnStartIdx ? lastUserPromptRef : undefined}
         className="group/turn"
       >

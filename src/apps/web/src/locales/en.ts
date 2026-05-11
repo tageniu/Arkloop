@@ -317,6 +317,8 @@ export const en: LocaleStrings = {
   sseReconnectNotice: "Connection lost. Reconnecting…",
   failedRunTitle: "Something went wrong. The run did not complete.",
   retryAction: "Retry",
+  messageSending: "Sending",
+  messageNotSent: "Not sent",
   resetAction: "Reset",
   profileTitle: "Profile",
   profileName: "Name",
