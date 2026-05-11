@@ -260,6 +260,8 @@ export const zh: LocaleStrings = {
     externalAddDir: "添加目录",
     externalAddPlaceholder: "目录路径，如 ~/.claude/skills",
     externalRemoveDir: "移除",
+    externalScanSummary: (dirCount: number, skillCount: number) =>
+      `已扫描 ${dirCount} 个目录，共 ${skillCount} 个技能`,
     externalLoadFailed: "加载外部技能失败",
     externalSaveFailed: "保存目录失败",
     externalRemoveFailed: "移除目录失败",

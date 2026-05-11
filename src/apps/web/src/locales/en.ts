@@ -260,6 +260,8 @@ export const en: LocaleStrings = {
     externalAddDir: "Add directory",
     externalAddPlaceholder: "Directory path, e.g. ~/.claude/skills",
     externalRemoveDir: "Remove",
+    externalScanSummary: (dirCount: number, skillCount: number) =>
+      `${dirCount} ${dirCount === 1 ? 'directory' : 'directories'} · ${skillCount} skills`,
     externalLoadFailed: "Failed to load external skills",
     externalSaveFailed: "Failed to save directory",
     externalRemoveFailed: "Failed to remove directory",

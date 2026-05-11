@@ -281,6 +281,7 @@ export interface LocaleStrings {
     externalAddDir: string;
     externalAddPlaceholder: string;
     externalRemoveDir: string;
+    externalScanSummary: (dirCount: number, skillCount: number) => string;
     externalLoadFailed: string;
     externalSaveFailed: string;
     externalRemoveFailed: string;
