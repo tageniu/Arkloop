@@ -544,6 +544,21 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
   }, [desktop, location.pathname])
 
   useEffect(() => {
+    const isMac = navigator.platform.toLowerCase().includes('mac')
+    const handler = (e: KeyboardEvent) => {
+      const modifier = isMac ? e.metaKey : e.ctrlKey
+      if (!modifier) return
+      if (e.key !== ',') return
+      if (e.shiftKey || e.altKey) return
+      e.preventDefault()
+      if (settingsOpen) closeSettings()
+      else openSettings()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [settingsOpen, openSettings, closeSettings])
+
+  useEffect(() => {
     if (!(desktop && settingsOpen)) return
     const lifecycle = settingsLifecycleRef.current
     if (lifecycle && typeof performance !== 'undefined') {
