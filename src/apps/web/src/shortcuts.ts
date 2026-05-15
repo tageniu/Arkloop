@@ -96,14 +96,17 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: ShortcutDefiniti
   const binding = 'binding' in shortcut ? shortcut.binding : shortcut
   const modifiers = new Set(binding.modifiers ?? [])
   const wantsMod = modifiers.has('mod')
-  const modPressed = getShortcutPlatform() === 'mac' ? event.metaKey : event.ctrlKey
+  const platform = getShortcutPlatform()
+  const modPressed = platform === 'mac' ? event.metaKey : event.ctrlKey
+  const extraPrimaryModifierPressed = platform === 'mac' ? event.ctrlKey : event.metaKey
 
   if (wantsMod !== modPressed) return false
+  if (extraPrimaryModifierPressed) return false
   if (modifiers.has('shift') !== event.shiftKey) return false
   if (modifiers.has('alt') !== event.altKey) return false
   if (!wantsMod && (event.metaKey || event.ctrlKey)) return false
 
-  return normalizeKey(event.key) === normalizeKey(binding.key)
+  return matchesShortcutKey(event, binding.key)
 }
 
 function formatModifier(modifier: ShortcutModifier, platform: ShortcutPlatform): string {
@@ -150,4 +153,23 @@ function ariaKey(key: string): string {
 function normalizeKey(key: string): string {
   if (key === 'Esc') return 'escape'
   return key.toLowerCase()
+}
+
+function matchesShortcutKey(event: KeyboardEvent, key: string): boolean {
+  if (normalizeKey(event.key) === normalizeKey(key)) return true
+  return event.code === physicalKeyCode(key)
+}
+
+function physicalKeyCode(key: string): string {
+  const normalized = key.toLowerCase()
+  if (/^[a-z]$/.test(normalized)) return `Key${normalized.toUpperCase()}`
+  if (/^[0-9]$/.test(normalized)) return `Digit${normalized}`
+  switch (key) {
+    case ',':
+      return 'Comma'
+    case '/':
+      return 'Slash'
+    default:
+      return key
+  }
 }

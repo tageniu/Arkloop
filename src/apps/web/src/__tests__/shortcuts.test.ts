@@ -31,6 +31,37 @@ describe('shortcuts', () => {
     expect(matchesShortcut(rightPanelEvent, SHORTCUTS.toggleSidebar)).toBe(false)
   })
 
+  it('使用物理按键匹配 Option 改写后的字符', () => {
+    setPlatform('MacIntel')
+
+    const rightPanelEvent = new KeyboardEvent('keydown', {
+      key: '∫',
+      code: 'KeyB',
+      altKey: true,
+      metaKey: true,
+    })
+
+    expect(matchesShortcut(rightPanelEvent, SHORTCUTS.toggleRightPanel)).toBe(true)
+  })
+
+  it('拒绝混入非当前平台的主修饰键', () => {
+    setPlatform('MacIntel')
+    expect(matchesShortcut(new KeyboardEvent('keydown', {
+      key: ',',
+      code: 'Comma',
+      ctrlKey: true,
+      metaKey: true,
+    }), SHORTCUTS.openSettings)).toBe(false)
+
+    setPlatform('Win32')
+    expect(matchesShortcut(new KeyboardEvent('keydown', {
+      key: ',',
+      code: 'Comma',
+      ctrlKey: true,
+      metaKey: true,
+    }), SHORTCUTS.openSettings)).toBe(false)
+  })
+
   it('按平台显示修饰键', () => {
     expect(formatShortcut(SHORTCUTS.toggleSidebar.binding, 'mac')).toEqual(['⌘', 'B'])
     expect(formatShortcut(SHORTCUTS.toggleRightPanel.binding, 'mac')).toEqual(['⌥', '⌘', 'B'])

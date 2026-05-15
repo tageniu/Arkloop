@@ -550,7 +550,7 @@ export function AppUIProvider({ children }: { children: ReactNode }) {
       if (matchesShortcut(e, SHORTCUTS.openSettings)) {
         e.preventDefault()
         if (settingsOpen) closeSettings()
-        else openSettings()
+        else openSettings('settings')
         return
       }
       if (matchesShortcut(e, SHORTCUTS.openSearch)) {
